@@ -30,9 +30,9 @@ fit_prior <- model$sample(
   data = dummy_data,
   seed = 1234,
   chains = 4,
-  iter_sampling = 500,
-  iter_warmup = 0,
-  fixed_param = TRUE
+  iter_sampling = 2000,
+  iter_warmup = 1000,
+  fixed_param = FALSE
 )
 
 
@@ -90,7 +90,7 @@ fit_post <- model$sample(
   data = data_list,
   seed = 1234,
   chains = 4,
-  iter_sampling = 1000,
+  iter_sampling = 2000,
   iter_warmup = 1000
 )
 
@@ -100,7 +100,7 @@ choice_cols <- grep("choice_rep", colnames(draws_post))
 post_rep <- draws_post[, choice_cols]
 
 # mean across draws for each trial
-post_choice_means <- rowMeans(post_rep)
+post_choice_means <- colMeans(post_rep)
 
 hist(post_choice_means, breaks = 30,
      main = "Posterior Predictive Overall Choice Rate",
@@ -147,13 +147,27 @@ for (alpha_true in alpha_grid) {
       iter_warmup = 1000,
       refresh = 0
     )
+
+    param_summary <- fit$summary(variables = c("alpha", "tau", "theta"))
+    max_rhat <- max(param_summary$rhat, na.rm = TRUE)
+    min_ess_bulk <- min(param_summary$ess_bulk, na.rm = TRUE)
+    converged <- (max_rhat < 1.01) && (min_ess_bulk > 400)
     
     draws <- as_draws_df(fit$draws())
     
     recovery_results[[counter]] <- data.frame(
       alpha_true = alpha_true,
       alpha_est = mean(draws$alpha),
-      alpha_sd = sd(draws$alpha)
+      alpha_sd = sd(draws$alpha),
+      tau_true = tau_true,
+      tau_est = mean(draws$tau),
+      tau_sd = sd(draws$tau),
+      theta_true = theta_true,
+      theta_est = mean(draws$theta),
+      theta_sd = sd(draws$theta),
+      max_rhat = max_rhat,
+      min_ess_bulk = min_ess_bulk,
+      converged = converged
     )
     
     counter <- counter + 1
@@ -166,14 +180,37 @@ recovery_df <- bind_rows(recovery_results)
 # RECOV. PLOTS ----------------------------------------------------------------------------------
 
 # Alpha Recovery Plot
-ggplot(recovery_df, aes(x = alpha_true, y = alpha_est)) +
+alpha_plot <- ggplot(recovery_df, aes(x = alpha_true, y = alpha_est)) +
   geom_point() +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  geom_errorbar(aes(ymin = alpha_est - alpha_sd, ymax = alpha_est + alpha_sd), width = 0.1) +
   theme_minimal() +
   labs(title = "Parameter Recovery: Alpha")
 
+# Tau Recovery Plot
+tau_plot <- ggplot(recovery_df, aes(x = tau_true, y = tau_est)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  geom_errorbar(aes(ymin = tau_est - tau_sd, ymax = tau_est + tau_sd), width = 0.1) +
+  theme_minimal() +
+  labs(title = "Parameter Recovery: Tau")
+
+# Theta Recovery Plot
+theta_plot <- ggplot(recovery_df, aes(x = theta_true, y = theta_est)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  geom_errorbar(aes(ymin = theta_est - theta_sd, ymax = theta_est + theta_sd), width = 0.1) + 
+  theme_minimal() +
+  labs(title = "Parameter Recovery: Theta")
+
 # Posterior SD
-ggplot(recovery_df, aes(x = factor(alpha_true), y = alpha_sd)) +
+alpha_sd_plot <- ggplot(recovery_df, aes(x = factor(alpha_true), y = alpha_sd)) +
   geom_boxplot() +
   theme_minimal() +
   labs(title = "Posterior SD of Alpha")
+
+# Saving plots
+ggsave("alpha_recovery_plot.png", alpha_plot, width = 6, height = 4)
+ggsave("tau_recovery_plot.png", tau_plot, width = 6, height = 4)
+ggsave("theta_recovery_plot.png", theta_plot, width = 6, height = 4)
+ggsave("alpha_sd_plot.png", alpha_sd_plot, width = 6, height = 4)
