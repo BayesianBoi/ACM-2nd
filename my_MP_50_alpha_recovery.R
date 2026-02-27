@@ -1,6 +1,6 @@
 
 
-# recovery using the MP algorithm - 50/50 rate opponent
+# recovery using the MP algorithm - biased (70/30) opponent
 # theta and tau is constant, only alpha varies
 set.seed(123)
 # --------------------------------------
@@ -13,8 +13,8 @@ library(ggplot2)
 
 model <- cmdstan_model("my_RL_model.stan")
 
-T <- 120
-rate_opponent <- 0.5
+T <- 200
+rate_opponent <- 0.7
 
 # --------------------------------------
 #  2. PRIOR PREDICTIVE CHECK
@@ -58,8 +58,8 @@ abline(h = 0.5, lty = 2)
 # --------------------------------------
 #  3. POSTERIOR PREDICTIVE CHECK
 # --------------------------------------
-# SIMULATE data using the MP algorithm with a 50/50 opponent
-simulate_rl_mp <- function(alpha, tau, theta, T, rate_opponent = 0.5) {
+# SIMULATE data using the MP algorithm with a biased opponent
+simulate_rl_mp <- function(alpha, tau, theta, T, rate_opponent = 0.7) {
   V <- numeric(T)
   choice <- integer(T)
   reward <- integer(T)
@@ -78,7 +78,7 @@ simulate_rl_mp <- function(alpha, tau, theta, T, rate_opponent = 0.5) {
   list(choice = choice, reward = reward)
 }
 
-sim_data <- simulate_rl_mp(alpha = 0.6, tau = 3, theta = 0.5, T = T)
+sim_data <- simulate_rl_mp(alpha = 0.6, tau = 3, theta = 0.5, T = T, rate_opponent = rate_opponent)
 
 data_list <- list(
   T = T,
@@ -115,7 +115,7 @@ abline(v = mean(sim_data$choice), col = "red", lwd = 2)
 # Opponent = random with bias rate_opponent
 # Reward[t] = 1 if agent_choice == opponent_choice else 0
 
-alpha_grid <- c(0.1, 0.3, 0.6, 0.9)
+alpha_grid <- c(0.1, 0.5, 0.9)
 tau_true <- 3
 theta_true <- 0.5
 n_reps <- 10
@@ -131,7 +131,7 @@ for (alpha_true in alpha_grid) {
       tau = tau_true,
       theta = theta_true,
       T = T,
-      rate_opponent = 0.5
+      rate_opponent = rate_opponent
     )
     
     data_list <- list(
@@ -187,30 +187,28 @@ alpha_plot <- ggplot(recovery_df, aes(x = alpha_true, y = alpha_est)) +
   theme_minimal() +
   labs(title = "Parameter Recovery: Alpha")
 
-# Tau Recovery Plot
-tau_plot <- ggplot(recovery_df, aes(x = tau_true, y = tau_est)) +
-  geom_point() +
-  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
-  geom_errorbar(aes(ymin = tau_est - tau_sd, ymax = tau_est + tau_sd), width = 0.1) +
-  theme_minimal() +
-  labs(title = "Parameter Recovery: Tau")
-
-# Theta Recovery Plot
-theta_plot <- ggplot(recovery_df, aes(x = theta_true, y = theta_est)) +
-  geom_point() +
-  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
-  geom_errorbar(aes(ymin = theta_est - theta_sd, ymax = theta_est + theta_sd), width = 0.1) + 
-  theme_minimal() +
-  labs(title = "Parameter Recovery: Theta")
-
 # Posterior SD
 alpha_sd_plot <- ggplot(recovery_df, aes(x = factor(alpha_true), y = alpha_sd)) +
   geom_boxplot() +
   theme_minimal() +
   labs(title = "Posterior SD of Alpha")
 
+# Prior predictive plot
+prior_plot <- ggplot(data.frame(trial = 1:T, mean_choice = prior_mean_choice), aes(x = trial, y = mean_choice)) +
+  geom_line() +
+  geom_hline(yintercept = 0.5, linetype = "dashed") +
+  theme_minimal() +
+  labs(title = "Prior Predictive Mean Choice", y = "P(choice=1)", x = "Trial")
+
+# Posterior predictive plot
+post_plot <- ggplot(data.frame(trial = 1:T, mean_choice = post_choice_means), aes(x = trial, y = mean_choice)) +
+  geom_line() +
+  geom_hline(yintercept = mean(sim_data$choice), col = "red", lwd = 2) +
+  theme_minimal() +
+  labs(title = "Posterior Predictive Mean Choice", y = "P(choice=1)", x = "Trial")
+
 # Saving plots
 ggsave("alpha_recovery_plot.png", alpha_plot, width = 6, height = 4)
-ggsave("tau_recovery_plot.png", tau_plot, width = 6, height = 4)
-ggsave("theta_recovery_plot.png", theta_plot, width = 6, height = 4)
 ggsave("alpha_sd_plot.png", alpha_sd_plot, width = 6, height = 4)
+ggsave("prior_plot.png", prior_plot, width = 6, height = 4)
+ggsave("post_plot.png", post_plot, width = 6, height = 4)
