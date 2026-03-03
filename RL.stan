@@ -1,11 +1,14 @@
 // Rescorla-Wagner Reinforcement Learning Agent
 
+// TODO
+// - migrate to "target += " syntax
+// - implement log-Likelihood
+
 data {
   int<lower=1> T;                           // number of trials
   array[T] int<lower=0, upper=1> choice;    // choice made at trial t; 1 means right hand, 0 means left
   array[T] int<lower=0, upper=1> reward;    // payoff at trial t; 1 means win, 0 means loss
 }
-
 
 parameters {
   real<lower=0, upper=1> alpha;    // learning rate
@@ -16,7 +19,7 @@ parameters {
 model {
   // Priors
   alpha ~ beta(2, 2);
-  tau ~ lognormal(0, 1);
+  tau ~ lognormal(0, 1.5);
   theta ~ beta(2, 2);
 
   // Initialize value
@@ -41,7 +44,7 @@ generated quantities {
   real<lower=0, upper=1> theta_prior;
 
   alpha_prior = beta_rng(1, 1);
-  tau_prior   = lognormal_rng(0, 1);
+  tau_prior   = lognormal_rng(0, 1.5);
   theta_prior = beta_rng(1, 1);
 
   array[T] real<lower=0, upper=1> choice_prob_priorp;
@@ -60,7 +63,6 @@ generated quantities {
       }
     }
   }
-
 
   // POSTERIOR PREDICTIVE
   array[T] real<lower=0, upper=1> choice_prob_postp;
