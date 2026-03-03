@@ -114,11 +114,11 @@ abline(v = mean(sim_data$choice), col = "red", lwd = 2)
 
 # 5. FULL JOINT PARAMETER RECOVERY
 
-alpha_grid  <- c(0.1, 0.3, 0.6, 0.9)
-tau_grid    <- c(1, 3, 6)
+alpha_grid  <- c(0.1, 0.5, 0.9)
+tau_grid    <- c(0.1, 5, 10)
 theta_grid  <- c(0.2, 0.5, 0.8)
 
-n_reps <- 5
+n_reps <- 3
 
 recovery_results <- list()
 counter <- 1
