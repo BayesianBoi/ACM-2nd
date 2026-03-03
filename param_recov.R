@@ -10,7 +10,7 @@ library(ggplot2)
 model <- cmdstan_model("RL.stan",
                        cpp_options = list(stan_threads = FALSE))
 T <- 100
-rate_opponent <- 0.75  # <-- biased MP environment
+rate_opponent <- 0.75  # biased opponent
 
 # 2. SIMULATION FUNCTION
 
@@ -19,9 +19,9 @@ simulate_rl_mp <- function(alpha, tau, theta, T, rate_opponent) {
   choice <- integer(T)
   reward <- integer(T)
   opponent <- integer(T)
-  
+
   V[1] <- theta
-  
+
   for (t in 1:T) {
     
     p <- plogis(tau * (2 * V[t] - 1))
@@ -57,16 +57,17 @@ fit_prior <- model$sample(
   fixed_param = TRUE
   #adapt_delta = 0.75 
 )
-draws_prior <- as_draws_matrix(fit_prior$draws("prior_preds"))
-choice_cols <- grep("prior_preds", colnames(draws_prior))
+
+draws_prior <- as_draws_matrix(fit_prior$draws("choice_priorp"))
+choice_cols <- grep("choice_priorp", colnames(draws_prior))
 prior_rep <- draws_prior[, choice_cols]
 
 prior_mean_trial <- colMeans(prior_rep)
 
 plot(1:T, prior_mean_trial, type = "l",
      ylim = c(0,1),
-     main = "Prior Predictive Mean Choice (0.75 MP)",
-     ylab = "P(choice=1)",
+     main = "Prior Predictive Mean Choice",
+     ylab = "Prob(choice=1)",
      xlab = "Trial")
 abline(h = 0.5, lty = 2)
 
@@ -74,7 +75,7 @@ prior_choice_means <- rowMeans(prior_rep)
 
 hist(prior_choice_means, breaks = 30,
      main = "Prior Predictive Overall Choice Rate",
-     xlab = "Mean P(choice=1)")
+     xlab = "Mean Prob(choice=1)")
 
 # 4. POSTERIOR PREDICTIVE CHECK
 
@@ -98,18 +99,19 @@ fit_post <- model$sample(
   iter_warmup = 1000
 )
 
-draws_post <- as_draws_matrix(fit_post$draws("posterior_preds"))
-choice_cols <- grep("posterior_preds", colnames(draws_post))
+draws_post <- as_draws_matrix(fit_post$draws("choice_postp"))
+choice_cols <- grep("choice_postp", colnames(draws_post))
 post_rep <- draws_post[, choice_cols]
 
 # Overall choice rate distribution
 post_choice_means <- rowMeans(post_rep)
 
 hist(post_choice_means, breaks = 30,
-     main = "Posterior Predictive Overall Choice Rate (0.75 MP)",
-     xlab = "Mean P(choice=1)")
+     main = "Posterior Predictive Overall Choice Rate",
+     xlab = "Mean Prob(choice=1)")
 
 abline(v = mean(sim_data$choice), col = "red", lwd = 2)
+
 # 5. FULL JOINT PARAMETER RECOVERY
 
 alpha_grid  <- c(0.1, 0.3, 0.6, 0.9)
@@ -193,10 +195,10 @@ ggplot(recovery_long, aes(x = true_value, y = estimate)) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
   facet_wrap(~parameter, scales = "free") +
   theme_minimal() +
-  labs(title = "Joint Parameter Recovery (0.75 MP)")
+  labs(title = "Joint Parameter Recovery")
 
 # Posterior SDs
 ggplot(recovery_df, aes(x = factor(alpha_true), y = alpha_sd)) +
   geom_boxplot() +
   theme_minimal() +
-  labs(title = "Posterior SD of Alpha (0.75 MP)")
+  labs(title = "Posterior SD of Alpha")
