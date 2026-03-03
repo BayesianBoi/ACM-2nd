@@ -41,10 +41,10 @@ generated quantities {
   real<lower=0, upper=1> theta_prior;
 
   alpha_prior = beta_rng(1, 1);
-  tau_prior   = normal_rng(0, 5);
+  tau_prior   = lognormal_rng(0, 1);
   theta_prior = beta_rng(1, 1);
 
-  array[T] int<lower=0, upper=1> choice_prob_priorp;
+  array[T] real<lower=0, upper=1> choice_prob_priorp;
   array[T] int<lower=0, upper=1> choice_priorp;
 
   {
@@ -63,7 +63,7 @@ generated quantities {
 
 
   // POSTERIOR PREDICTIVE
-  array[T] int<lower=0, upper=1> choice_prob_postp;
+  array[T] real<lower=0, upper=1> choice_prob_postp;
   array[T] int<lower=0, upper=1> choice_postp;
 
   {
@@ -72,7 +72,7 @@ generated quantities {
     for (t in 1:T) {
 
       choice_prob_postp[t] = inv_logit(V_post);
-      choice_pp[t] = bernoulli_logit_rng(tau * (2 * V_post - 1));
+      choice_postp[t] = bernoulli_logit_rng(tau * (2 * V_post - 1));
 
       if (t < T) {
         V_post += alpha * (reward[t] - V_post);
