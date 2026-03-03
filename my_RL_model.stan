@@ -1,29 +1,17 @@
+// Rescorla-Wagner Reinforcement Learning Agent
 
-
-// RL only, one participant
-
-
-// DATA BLOCK
 data {
-  int<lower=1> T;                  // number of trials
-  array[T] int<lower=0, upper=1> choice;
-  array[T] int<lower=0, upper=1> reward;
+  int<lower=1> T;                           // number of trials
+  array[T] int<lower=0, upper=1> choice;    // choice made at trial t; 1 means right hand, 0 means left
+  array[T] int<lower=0, upper=1> reward;    // payoff at trial t; 1 means win, 0 means loss
 }
 
 
-// PARAMETERS
-// for now, Fix V₁ = 0.5
-// infer theta
 parameters {
   real<lower=0, upper=1> alpha;    // learning rate
-  real<lower=0> tau;               // inverse temperature
-  real<lower=0, upper=1> theta;    // initial value V1 - Early trials become informative.
+  real<lower=0> tau;               // inverse temperature, higher → more deterministic.
+  real<lower=0, upper=1> theta;    // log-odds of choosing right hand.
 }
-
-// ------------------------------------------------------------
-
-
-// MODEL BLOCK
 
 model {
 
@@ -37,73 +25,62 @@ model {
 
   for (t in 1:T) {
 
-    // Map V from [0,1] to [-1,1]
-    real p = inv_logit(tau * (2 * V - 1)); // Higher TAU → more deterministic.
-
     // Likelihood
-    choice[t] ~ bernoulli(p);
+    choice[t] ~ bernoulli_logit(tau * (2 * V - 1));
 
     // Update value for next trial
     if (t < T) {
-      V = V + alpha * (reward[t] - V);
+      V += alpha * (reward[t] - V);
     }
   }
 }
 
 generated quantities {
 
-  // ============================
   // PRIOR PREDICTIVE
-  // ============================
 
   real<lower=0, upper=1> alpha_prior;
-  real tau_prior;
+  real<lower=0> tau_prior;
   real<lower=0, upper=1> theta_prior;
 
   alpha_prior = beta_rng(1, 1);
   tau_prior   = normal_rng(0, 5);
   theta_prior = beta_rng(1, 1);
 
-  array[T] int<lower=0, upper=1> prior_preds;
+  array[T] int<lower=0, upper=1> choice_prob_priorp;
+  array[T] int<lower=0, upper=1> choice_priorp;
 
   {
     real V_prior = theta_prior;
 
     for (t in 1:T) {
 
-      real logit_p_prior = tau_prior * (2 * V_prior - 1);
-      real p_prior = inv_logit(logit_p_prior);
-
-      prior_preds[t] = bernoulli_rng(p_prior);
+      choice_prob_priorp[t] = inv_logit(2 * V_prior - 1);
+      choice_priorp[t] = bernoulli_logit_rng(tau_prior * (2 * V_prior - 1));
 
       if (t < T) {
-        V_prior = V_prior + alpha_prior * (reward[t] - V_prior);
+        V_prior += alpha_prior * (reward[t] - V_prior);
       }
     }
   }
 
 
-  // ============================
   // POSTERIOR PREDICTIVE
-  // ============================
 
-  array[T] int<lower=0, upper=1> posterior_preds;
+  array[T] int<lower=0, upper=1> choice_prob_postp;
+  array[T] int<lower=0, upper=1> choice_postp;
 
   {
     real V_post = theta;
 
     for (t in 1:T) {
 
-      real logit_p_post = tau * (2 * V_post - 1);
-      real p_post = inv_logit(logit_p_post);
-
-      posterior_preds[t] = bernoulli_rng(p_post);
+      choice_prob_postp[t] = inv_logit(2 * V_post - 1);
+      choice_pp[t] = bernoulli_logit_rng(tau * (2 * V_post - 1));
 
       if (t < T) {
-        V_post = V_post + alpha * (reward[t] - V_post);
+        V_post += alpha * (reward[t] - V_post);
       }
     }
   }
 }
-
-
