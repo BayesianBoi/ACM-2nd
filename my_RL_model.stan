@@ -14,7 +14,6 @@ parameters {
 }
 
 model {
-
   // Priors
   alpha ~ beta(2, 2);
   tau ~ lognormal(0, 1);
@@ -36,9 +35,7 @@ model {
 }
 
 generated quantities {
-
   // PRIOR PREDICTIVE
-
   real<lower=0, upper=1> alpha_prior;
   real<lower=0> tau_prior;
   real<lower=0, upper=1> theta_prior;
@@ -55,7 +52,7 @@ generated quantities {
 
     for (t in 1:T) {
 
-      choice_prob_priorp[t] = inv_logit(2 * V_prior - 1);
+      choice_prob_priorp[t] = inv_logit(V_prior);
       choice_priorp[t] = bernoulli_logit_rng(tau_prior * (2 * V_prior - 1));
 
       if (t < T) {
@@ -66,7 +63,6 @@ generated quantities {
 
 
   // POSTERIOR PREDICTIVE
-
   array[T] int<lower=0, upper=1> choice_prob_postp;
   array[T] int<lower=0, upper=1> choice_postp;
 
@@ -75,7 +71,7 @@ generated quantities {
 
     for (t in 1:T) {
 
-      choice_prob_postp[t] = inv_logit(2 * V_post - 1);
+      choice_prob_postp[t] = inv_logit(V_post);
       choice_pp[t] = bernoulli_logit_rng(tau * (2 * V_post - 1));
 
       if (t < T) {
