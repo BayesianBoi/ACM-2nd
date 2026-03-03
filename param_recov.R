@@ -1,8 +1,14 @@
+# TODO
+# - implement more sophisticated adversary agent
+# - tidy up imports (tidyverse incorporates most)
+# - Harry plotter gets to work on refining visualizations for maximized stakeholder value
+
+# 0. IMPORTING DEPENDENCIES
+
 set.seed(123)
 library(cmdstanr)
 library(posterior)
-library(dplyr)
-library(tidyr)
+library(tidyverse)
 library(ggplot2)
 
 # 1. LOAD MODEL
@@ -38,6 +44,7 @@ simulate_rl_mp <- function(alpha, tau, theta, T, rate_opponent) {
   
   list(choice = choice, reward = reward)
 }
+
 # 3. PRIOR PREDICTIVE CHECK
 
 dummy_data <- list(
@@ -118,7 +125,7 @@ alpha_grid  <- c(0.1, 0.5, 0.9)
 tau_grid    <- c(0.1, 5, 10)
 theta_grid  <- c(0.2, 0.5, 0.8)
 
-n_reps <- 3
+n_reps <- 1
 
 recovery_results <- list()
 counter <- 1
