@@ -1,24 +1,18 @@
-# ============================================================
-# RL MODEL QUALITY + FULL PARAMETER RECOVERY (0.75 MP)
-# ============================================================
 set.seed(123)
 library(cmdstanr)
 library(posterior)
 library(dplyr)
 library(tidyr)
 library(ggplot2)
-# ------------------------------------------------------------
+
 # 1. LOAD MODEL
-# ------------------------------------------------------------
 
-model <- cmdstan_model("my_RL_model.stan",
+model <- cmdstan_model("RL.stan",
                        cpp_options = list(stan_threads = FALSE))
-T <- 120
-rate_opponent <- 0.75   # <-- biased MP environment
+T <- 100
+rate_opponent <- 0.75  # <-- biased MP environment
 
-# ------------------------------------------------------------
 # 2. SIMULATION FUNCTION
-# ------------------------------------------------------------
 
 simulate_rl_mp <- function(alpha, tau, theta, T, rate_opponent) {
   V <- numeric(T)
@@ -44,9 +38,8 @@ simulate_rl_mp <- function(alpha, tau, theta, T, rate_opponent) {
   
   list(choice = choice, reward = reward)
 }
-# ------------------------------------------------------------
 # 3. PRIOR PREDICTIVE CHECK
-# ------------------------------------------------------------
+
 dummy_data <- list(
   T = T,
   choice = rep(0, T),
@@ -83,9 +76,7 @@ hist(prior_choice_means, breaks = 30,
      main = "Prior Predictive Overall Choice Rate",
      xlab = "Mean P(choice=1)")
 
-# ------------------------------------------------------------
 # 4. POSTERIOR PREDICTIVE CHECK
-# ------------------------------------------------------------
 
 sim_data <- simulate_rl_mp(
   alpha = 0.6,
@@ -119,9 +110,7 @@ hist(post_choice_means, breaks = 30,
      xlab = "Mean P(choice=1)")
 
 abline(v = mean(sim_data$choice), col = "red", lwd = 2)
-# ------------------------------------------------------------
 # 5. FULL JOINT PARAMETER RECOVERY
-# ------------------------------------------------------------
 
 alpha_grid  <- c(0.1, 0.3, 0.6, 0.9)
 tau_grid    <- c(1, 3, 6)
@@ -182,9 +171,7 @@ for (alpha_true in alpha_grid) {
 
 recovery_df <- bind_rows(recovery_results)
 
-# ------------------------------------------------------------
 # 6. RECOVERY PLOTS
-# ------------------------------------------------------------
 
 recovery_long <- recovery_df %>%
   select(alpha_true, tau_true, theta_true,
