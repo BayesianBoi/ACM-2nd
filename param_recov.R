@@ -1,15 +1,13 @@
 # TODO
 # - implement more sophisticated adversary agent
-# - tidy up imports (tidyverse incorporates most)
+# - tidy up imports (tidyverse incorporates most) - done 
 # - Harry plotter gets to work on refining visualizations for maximized stakeholder value
 
 # 0. IMPORTING DEPENDENCIES
 
 set.seed(123)
-library(cmdstanr)
-library(posterior)
-library(tidyverse)
-library(ggplot2)
+pacman::p_load(cmdstanr, posterior, tidyverse, cowplot)
+
 
 # 1. LOAD MODEL
 
@@ -193,19 +191,24 @@ recovery_long <- recovery_df %>%
   mutate(
     true_value = case_when(
       parameter == "alpha_est" ~ alpha_true,
-      parameter == "tau_est" ~ tau_true,
+      parameter == "tau_est"   ~ tau_true,
       parameter == "theta_est" ~ theta_true
-    )
-  )
-ggplot(recovery_long, aes(x = true_value, y = estimate)) +
-  geom_point(alpha = 0.6) +
-  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+    ))
+
+## Actual plotting 
+
+p1 <- ggplot(recovery_long, aes(x = true_value, y = estimate, colour = parameter)) +
+  geom_point(alpha = 0.8, size = 2) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", colour = "grey30") +
+  ylab("Estimated Value") +
+  xlab("True Value") +
   facet_wrap(~parameter, scales = "free") +
-  theme_minimal() +
+  scale_colour_brewer(palette = "Set2", guide = "none") +
+  theme_cowplot() +
   labs(title = "Joint Parameter Recovery")
 
 # Posterior SDs
-ggplot(recovery_df, aes(x = factor(alpha_true), y = alpha_sd)) +
+p2 <- ggplot(recovery_df, aes(x = factor(alpha_true), y = alpha_sd)) +
   geom_boxplot() +
-  theme_minimal() +
+  theme_cowplot() +
   labs(title = "Posterior SD of Alpha")
