@@ -71,7 +71,7 @@ prior_mean_trial <- colMeans(prior_rep)
 
 hist_df <- data.frame(mean_prob = prior_choice_means)
 
-p_hist <- ggplot(hist_df, aes(x = mean_prob)) +
+p_prior <- ggplot(hist_df, aes(x = mean_prob)) +
   geom_density(fill = "royalblue3", colour = "black", alpha = 0.4) +
   geom_vline(xintercept = 0.5, linetype = "dashed", colour = "grey40") +
   annotate("text", x = 0.52, y = Inf, label = "Chance (0.5)",
@@ -115,7 +115,7 @@ post_choice_means <- rowMeans(post_rep)
 
 hist_df <- data.frame(mean_prob = post_choice_means)
 
-p_post_hist <- ggplot(hist_df, aes(x = mean_prob)) +
+p_post <- ggplot(hist_df, aes(x = mean_prob)) +
   geom_density(fill = "royalblue3", colour = "black", alpha = 0.4) +
   geom_vline(xintercept = mean(sim_data$choice), colour = "#E84855", linewidth = 0.8) +
   annotate("text", x = mean(sim_data$choice), y = Inf,
@@ -251,3 +251,13 @@ p4 <- ggplot(recovery_df, aes(x = factor(theta_true), y = theta_sd, fill = facto
   ) +
   theme_cowplot() +
   theme(legend.position = "none")
+
+## ud i æteren 
+
+p_prior
+p_post
+p1
+p2
+p3
+p4
+
