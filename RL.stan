@@ -1,8 +1,9 @@
 // Rescorla-Wagner Reinforcement Learning Agent
 
 // TODO
-// - migrate to "target += " syntax
+// - migrate model specification syntax "target += "
 // - implement log-Likelihood
+// - 
 
 data {
   int<lower=1> T;                           // number of trials
@@ -11,9 +12,9 @@ data {
 }
 
 parameters {
-  real<lower=0, upper=1> alpha;    // learning rate
-  real<lower=0> tau;               // inverse temperature, higher → more deterministic.
-  real<lower=0, upper=1> theta;    // log-odds of choosing right hand.
+  real<lower=0, upper=1> alpha;             // learning rate
+  real<lower=0> tau;                        // inverse temperature, higher → more deterministic.
+  real<lower=0, upper=1> theta;             // log-odds of choosing right hand.
 }
 
 model {
