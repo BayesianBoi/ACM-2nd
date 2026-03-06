@@ -69,18 +69,20 @@ prior_rep <- draws_prior[, choice_cols]
 
 prior_mean_trial <- colMeans(prior_rep)
 
-plot(1:T, prior_mean_trial, type = "l",
-     ylim = c(0,1),
-     main = "Prior Predictive Mean Choice",
-     ylab = "Prob(choice=1)",
-     xlab = "Trial")
-abline(h = 0.5, lty = 2)
+hist_df <- data.frame(mean_prob = prior_choice_means)
 
-prior_choice_means <- rowMeans(prior_rep)
+p_hist <- ggplot(hist_df, aes(x = mean_prob)) +
+  geom_histogram(bins = 30, fill = "royalblue3", colour = "#E84855", alpha = 0.8) +
+  geom_vline(xintercept = 0.5, linetype = "dashed", colour = "grey40") +
+  annotate("text", x = 0.52, y = Inf, label = "Chance (0.5)",
+           hjust = 0, vjust = 1.5, size = 3.5, colour = "#E84855") +
+  labs(
+    title = "Prior Predictive Overall Choice Rate",
+    x = "Mean Prob(choice = 1)",
+    y = "Count"
+  ) +
+  theme_cowplot()
 
-hist(prior_choice_means, breaks = 30,
-     main = "Prior Predictive Overall Choice Rate",
-     xlab = "Mean Prob(choice=1)")
 
 # 4. POSTERIOR PREDICTIVE CHECK
 
@@ -111,11 +113,20 @@ post_rep <- draws_post[, choice_cols]
 # Overall choice rate distribution
 post_choice_means <- rowMeans(post_rep)
 
-hist(post_choice_means, breaks = 30,
-     main = "Posterior Predictive Overall Choice Rate",
-     xlab = "Mean Prob(choice=1)")
+hist_df <- data.frame(mean_prob = post_choice_means)
 
-abline(v = mean(sim_data$choice), col = "red", lwd = 2)
+p_post_hist <- ggplot(hist_df, aes(x = mean_prob)) +
+  geom_histogram(bins = 26, fill = "royalblue3", colour = "white", alpha = 0.8) +
+  geom_vline(xintercept = mean(sim_data$choice), colour = "#E84855", linewidth = 0.8) +
+  annotate("text", x = mean(sim_data$choice), y = Inf,
+           label = paste0("true mean = ", round(mean(sim_data$choice), 2)),
+           hjust = -0.1, vjust = 1.5, size = 3.5, colour = "#E84855") +
+  labs(
+    title = "Posterior Predictive Overall Choice Rate",
+    x = "Mean Prob(choice = 1)",
+    y = "Count"
+  ) +
+  theme_cowplot()
 
 # 5. FULL JOINT PARAMETER RECOVERY
 
@@ -201,14 +212,42 @@ p1 <- ggplot(recovery_long, aes(x = true_value, y = estimate, colour = parameter
   geom_point(alpha = 0.8, size = 2) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed", colour = "grey30") +
   ylab("Estimated Value") +
-  xlab("True Value") +
+  xlab("Ground Truth Value") +
   facet_wrap(~parameter, scales = "free") +
   scale_colour_brewer(palette = "Set2", guide = "none") +
   theme_cowplot() +
   labs(title = "Joint Parameter Recovery")
 
 # Posterior SDs
-p2 <- ggplot(recovery_df, aes(x = factor(alpha_true), y = alpha_sd)) +
-  geom_boxplot() +
+p2 <- ggplot(recovery_df, aes(x = factor(alpha_true), y = alpha_sd, fill = factor(alpha_true))) +
+  geom_boxplot(alpha = 0.5, linewidth = 0.4, width = 0.5) +
+  geom_jitter(aes(colour = factor(alpha_true)), width = 0.15, alpha = 0.9, size = 1.2) +
+  labs(
+    title = "Posterior SD of Alpha",
+    x = "True Alpha",
+    y = "Posterior SD"
+  ) +
+  theme_cowplot() + 
+  theme(legend.position = "none")
+
+p3 <- ggplot(recovery_df, aes(x = factor(tau_true), y = tau_sd, fill = factor(tau_true))) +
+  geom_boxplot(alpha = 0.5, linewidth = 0.4, width = 0.5) + 
+  geom_jitter(aes(colour = factor(tau_true)), width = 0.15, alpha = 0.9, size = 1.2) +
+  labs(
+    title = "Posterior SD of Tau",
+    x = "True Tau",
+    y = "Posterior SD"
+  ) +
   theme_cowplot() +
-  labs(title = "Posterior SD of Alpha")
+  theme(legend.position = "none")
+
+p4 <- ggplot(recovery_df, aes(x = factor(theta_true), y = theta_sd, fill = factor(theta_true))) +
+  geom_boxplot(alpha = 0.5, linewidth = 0.4, width = 0.5) +
+  geom_jitter(aes(colour = factor(theta_true)), width = 0.15, alpha = 0.9, size = 1.2) +
+  labs(
+    title = "Posterior SD of Theta",
+    x = "True Theta",
+    y = "Posterior SD"
+  ) +
+  theme_cowplot() +
+  theme(legend.position = "none")
