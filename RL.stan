@@ -3,12 +3,14 @@
 // TODO
 // - migrate model specification syntax "target += "
 // - implement log-Likelihood
-// - 
 
 data {
   int<lower=1> T;                           // number of trials
   array[T] int<lower=0, upper=1> choice;    // choice made at trial t; 1 means right hand, 0 means left
   array[T] int<lower=0, upper=1> reward;    // payoff at trial t; 1 means win, 0 means loss
+  real alpha_prior_params;
+  real tau_prior_sd;
+  real theta_prior_sd;
 }
 
 parameters {
@@ -19,9 +21,9 @@ parameters {
 
 model {
   // Priors
-  alpha ~ beta(2, 2);
-  tau ~ lognormal(0, 1.5);
-  theta ~ normal(0, 1.5);
+  alpha ~ beta(alpha_prior_params, alpha_prior_params);
+  tau ~ lognormal(0, tau_prior_sd);
+  theta ~ normal(0, theta_prior_sd);
 
   // Initialize value
   real V = theta;
@@ -44,23 +46,23 @@ generated quantities {
   real<lower=0> tau_prior;
   real theta_prior;
 
-  alpha_prior = beta_rng(1, 1);
-  tau_prior   = lognormal_rng(0, 1.5);
-  theta_prior = normal_rng(0, 1.5);
+  alpha_prior = beta_rng(alpha_prior_params, alpha_prior_params);
+  tau_prior   = lognormal_rng(0, tau_prior_sd);
+  theta_prior = normal_rng(0, theta_prior_sd);
 
   array[T] real<lower=0, upper=1> choice_prob_priorp;
   array[T] int<lower=0, upper=1> choice_priorp;
 
   {
-    real V_prior = theta_prior;
+    real V = theta_prior;
 
     for (t in 1:T) {
 
-      choice_prob_priorp[t] = inv_logit(V_prior);
-      choice_priorp[t] = bernoulli_logit_rng(tau_prior * (2 * V_prior - 1));
+      choice_prob_priorp[t] = inv_logit(V);
+      choice_priorp[t] = bernoulli_logit_rng(tau_prior * (2 * V - 1));
 
       if (t < T) {
-        V_prior += alpha_prior * (reward[t] - V_prior);
+        V += alpha_prior * (reward[t] - V);
       }
     }
   }
@@ -70,15 +72,15 @@ generated quantities {
   array[T] int<lower=0, upper=1> choice_postp;
 
   {
-    real V_post = theta;
+    real V = theta;
 
     for (t in 1:T) {
 
-      choice_prob_postp[t] = inv_logit(V_post);
-      choice_postp[t] = bernoulli_logit_rng(tau * (2 * V_post - 1));
+      choice_prob_postp[t] = inv_logit(V);
+      choice_postp[t] = bernoulli_logit_rng(tau * (2 * V - 1));
 
       if (t < T) {
-        V_post += alpha * (reward[t] - V_post);
+        V += alpha * (reward[t] - V);
       }
     }
   }
