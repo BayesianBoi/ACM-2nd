@@ -21,7 +21,7 @@ model {
   // Priors
   alpha ~ beta(2, 2);
   tau ~ lognormal(0, 1.5);
-  theta ~ normal(, 1.5);
+  theta ~ normal(0, 1.5);
 
   // Initialize value
   real V = theta;
