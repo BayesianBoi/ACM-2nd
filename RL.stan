@@ -13,15 +13,15 @@ data {
 
 parameters {
   real<lower=0, upper=1> alpha;             // learning rate
-  real<lower=0> tau;                        // inverse temperature, higher → more deterministic.
-  real<lower=0, upper=1> theta;             // log-odds of choosing right hand.
+  real<lower=0> tau;                        // inverse temperature, higher → more deterministic
+  real theta;                               // log-odds of choosing right hand
 }
 
 model {
   // Priors
   alpha ~ beta(2, 2);
   tau ~ lognormal(0, 1.5);
-  theta ~ beta(2, 2);
+  theta ~ normal(, 1.5);
 
   // Initialize value
   real V = theta;
@@ -42,11 +42,11 @@ generated quantities {
   // PRIOR PREDICTIVE
   real<lower=0, upper=1> alpha_prior;
   real<lower=0> tau_prior;
-  real<lower=0, upper=1> theta_prior;
+  real theta_prior;
 
   alpha_prior = beta_rng(1, 1);
   tau_prior   = lognormal_rng(0, 1.5);
-  theta_prior = beta_rng(1, 1);
+  theta_prior = normal_rng(0, 1.5);
 
   array[T] real<lower=0, upper=1> choice_prob_priorp;
   array[T] int<lower=0, upper=1> choice_priorp;
