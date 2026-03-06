@@ -1,7 +1,5 @@
 # TODO
 # - implement more sophisticated adversary agent
-# - tidy up imports (tidyverse incorporates most) - done 
-# - Harry plotter gets to work on refining visualizations for maximized stakeholder value
 
 # 0. IMPORTING DEPENDENCIES
 
@@ -11,7 +9,7 @@ pacman::p_load(cmdstanr, posterior, tidyverse, cowplot)
 
 # 1. LOAD MODEL
 
-model <- cmdstan_model("RL.stan",
+model <- cmdstan_model("./RL.stan",
                        cpp_options = list(stan_threads = FALSE))
 T <- 100
 rate_opponent <- 0.75  # biased opponent
@@ -22,7 +20,7 @@ simulate_rl_mp <- function(alpha, tau, theta, T, rate_opponent) {
   V <- numeric(T)
   choice <- integer(T)
   reward <- integer(T)
-  opponent <- integer(T)
+  opponent_choice <- integer(T)
 
   V[1] <- theta
 
@@ -31,16 +29,16 @@ simulate_rl_mp <- function(alpha, tau, theta, T, rate_opponent) {
     p <- plogis(tau * (2 * V[t] - 1))
     choice[t] <- rbinom(1, 1, p)
 
-    opponent[t] <- rbinom(1, 1, rate_opponent)
+    opponent_choice[t] <- rbinom(1, 1, rate_opponent)
 
-    reward[t] <- as.integer(choice[t] == opponent[t])
+    reward[t] <- as.integer(choice[t] == opponent_choice[t])
 
     if (t < T) {
       V[t+1] <- V[t] + alpha * (reward[t] - V[t])
     }
   }
   
-  list(choice = choice, reward = reward)
+  list(choice = choice, opponent_choice = opponent_choice, reward = reward)
 }
 
 # 3. PRIOR PREDICTIVE CHECK
@@ -48,7 +46,7 @@ simulate_rl_mp <- function(alpha, tau, theta, T, rate_opponent) {
 dummy_data <- list(
   T = T,
   choice = rep(0, T),
-  reward = rep(0, T),
+  opponent_choice = rep(0, T),
   alpha_prior_params = 2,
   tau_prior_sd = 1.5,
   theta_prior_sd = 1.5
@@ -86,7 +84,6 @@ p_prior <- ggplot(hist_df, aes(x = mean_prob)) +
   ) +
   theme_cowplot()
 
-
 # 4. POSTERIOR PREDICTIVE CHECK
 
 sim_data <- simulate_rl_mp(
@@ -99,7 +96,7 @@ sim_data <- simulate_rl_mp(
 data_list <- list(
   T = T,
   choice = sim_data$choice,
-  reward = sim_data$reward,
+  opponent_choice = sim_data$opponent_choice,
   alpha_prior_params = 2,
   tau_prior_sd = 1.5,
   theta_prior_sd = 1.5
@@ -161,7 +158,7 @@ for (alpha_true in alpha_grid) {
         data_list <- list(
           T = T,
           choice = sim$choice,
-          reward = sim$reward,
+          opponent_choice = sim$opponent_choice,
           alpha_prior_params = 2,
           tau_prior_sd = 1.5,
           theta_prior_sd = 1.5
@@ -180,14 +177,14 @@ for (alpha_true in alpha_grid) {
         
         recovery_results[[counter]] <- data.frame(
           alpha_true = alpha_true,
-          tau_true = tau_true,
-          theta_true = theta_true,
           alpha_est = mean(draws$alpha),
-          tau_est = mean(draws$tau),
-          theta_est = mean(draws$theta),
           alpha_sd = sd(draws$alpha),
+          tau_true = tau_true,
           tau_sd = sd(draws$tau),
-          theta_sd = sd(draws$theta)
+          tau_est = mean(draws$tau),
+          theta_true = theta_true,
+          theta_est = mean(draws$theta_prob),
+          theta_sd = sd(draws$theta_prob)
         )
         
         counter <- counter + 1
