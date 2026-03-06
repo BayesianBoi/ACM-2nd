@@ -8,9 +8,9 @@ data {
   int<lower=1> T;                           // number of trials
   array[T] int<lower=0, upper=1> choice;    // choice made at trial t; 1 means right hand, 0 means left
   array[T] int<lower=0, upper=1> reward;    // payoff at trial t; 1 means win, 0 means loss
-  real alpha_prior_params;
-  real tau_prior_sd;
-  real theta_prior_sd;
+  int<lower=1> alpha_prior_params;
+  real<lower=0> tau_prior_sd;
+  real<lower=0> theta_prior_sd;
 }
 
 parameters {
