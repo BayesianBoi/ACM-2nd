@@ -29,14 +29,14 @@ simulate_rl_mp <- function(alpha, tau, theta, T, rate_opponent) {
   V[1] <- theta
 
   for (t in 1:T) {
-    
+
     p <- plogis(tau * (2 * V[t] - 1))
     choice[t] <- rbinom(1, 1, p)
-    
+
     opponent[t] <- rbinom(1, 1, rate_opponent)
-    
+
     reward[t] <- as.integer(choice[t] == opponent[t])
-    
+
     if (t < T) {
       V[t+1] <- V[t] + alpha * (reward[t] - V[t])
     }
@@ -50,7 +50,10 @@ simulate_rl_mp <- function(alpha, tau, theta, T, rate_opponent) {
 dummy_data <- list(
   T = T,
   choice = rep(0, T),
-  reward = rep(0, T)
+  reward = rep(0, T),
+  alpha_prior_params = 2,
+  tau_prior_sd = 1.5,
+  theta_prior_sd = 1.5
 )
 
 fit_prior <- model$sample(
@@ -96,7 +99,10 @@ sim_data <- simulate_rl_mp(
 data_list <- list(
   T = T,
   choice = sim_data$choice,
-  reward = sim_data$reward
+  reward = sim_data$reward,
+  alpha_prior_params = 2,
+  tau_prior_sd = 1.5,
+  theta_prior_sd = 1.5
 )
 fit_post <- model$sample(
   data = data_list,
@@ -146,7 +152,10 @@ for (alpha_true in alpha_grid) {
         data_list <- list(
           T = T,
           choice = sim$choice,
-          reward = sim$reward
+          reward = sim$reward,
+          alpha_prior_params = 2,
+          tau_prior_sd = 1.5,
+          theta_prior_sd = 1.5
         )
         
         fit <- model$sample(
