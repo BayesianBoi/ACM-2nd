@@ -69,7 +69,7 @@ prior_rep <- draws_prior[, choice_cols]
 
 prior_mean_trial <- colMeans(prior_rep)
 
-hist_df <- data.frame(mean_prob = prior_choice_means)
+hist_df <- data.frame(mean_prob = prior_mean_trial)
 
 p_prior <- ggplot(hist_df, aes(x = mean_prob)) +
   geom_density(fill = "royalblue3", colour = "black", alpha = 0.4) +
