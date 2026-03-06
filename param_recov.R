@@ -75,14 +75,14 @@ prior_mean_trial <- colMeans(prior_rep)
 hist_df <- data.frame(mean_prob = prior_choice_means)
 
 p_hist <- ggplot(hist_df, aes(x = mean_prob)) +
-  geom_histogram(bins = 30, fill = "royalblue3", colour = "#E84855", alpha = 0.8) +
+  geom_density(fill = "royalblue3", colour = "black", alpha = 0.4) +
   geom_vline(xintercept = 0.5, linetype = "dashed", colour = "grey40") +
   annotate("text", x = 0.52, y = Inf, label = "Chance (0.5)",
            hjust = 0, vjust = 1.5, size = 3.5, colour = "#E84855") +
   labs(
     title = "Prior Predictive Overall Choice Rate",
     x = "Mean Prob(choice = 1)",
-    y = "Count"
+    y = "Density"
   ) +
   theme_cowplot()
 
@@ -122,7 +122,7 @@ post_choice_means <- rowMeans(post_rep)
 hist_df <- data.frame(mean_prob = post_choice_means)
 
 p_post_hist <- ggplot(hist_df, aes(x = mean_prob)) +
-  geom_histogram(bins = 26, fill = "royalblue3", colour = "white", alpha = 0.8) +
+  geom_density(fill = "royalblue3", colour = "black", alpha = 0.4) +
   geom_vline(xintercept = mean(sim_data$choice), colour = "#E84855", linewidth = 0.8) +
   annotate("text", x = mean(sim_data$choice), y = Inf,
            label = paste0("true mean = ", round(mean(sim_data$choice), 2)),
