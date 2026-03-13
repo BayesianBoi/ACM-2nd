@@ -6,7 +6,7 @@
 # 0. IMPORTING DEPENDENCIES
 
 set.seed(123)
-pacman::p_load(cmdstanr, posterior, tidyverse, cowplot)
+pacman::p_load(cmdstanr, posterior, tidyverse, cowplot, bayesplot)
 
 
 # 1. LOAD MODEL
@@ -63,6 +63,8 @@ fit_prior <- model$sample(
   #adapt_delta = 0.75 
 )
 
+prior_diag <- mcmc_trace(fit_prior$draws(variables = c("alpha", "tau", "theta")))
+
 draws_prior <- as_draws_matrix(fit_prior$draws("choice_priorp"))
 choice_cols <- grep("choice_priorp", colnames(draws_prior))
 prior_rep <- draws_prior[, choice_cols]
@@ -106,6 +108,8 @@ fit_post <- model$sample(
   iter_warmup = 1000
 )
 
+post_diag <- mcmc_trace(fit_post$draws(variables = c("alpha", "tau", "theta")))
+
 draws_post <- as_draws_matrix(fit_post$draws("choice_postp"))
 choice_cols <- grep("choice_postp", colnames(draws_post))
 post_rep <- draws_post[, choice_cols]
@@ -125,6 +129,28 @@ p_post <- ggplot(hist_df, aes(x = mean_prob)) +
     title = "Posterior Predictive Overall Choice Rate",
     x = "Mean Prob(choice = 1)",
     y = "Count"
+  ) +
+  theme_cowplot()
+
+
+## Prior-Posterior update plot
+
+prior_post_df <- data.frame(
+  value = c(prior_mean_trial, post_choice_means),
+  type = c(rep("Prior", length(prior_mean_trial)), rep("Posterior", length(post_choice_means)))
+)
+
+p_prior_post <- ggplot(prior_post_df, aes(x = value, fill = type)) +
+  geom_density(alpha = 0.4, colour = "black") +
+  geom_vline(xintercept = mean(sim_data$choice), colour = "#E84855", linewidth = 0.8) +
+  annotate("text", x = mean(sim_data$choice), y = Inf,
+           label = paste0("true mean = ", round(mean(sim_data$choice), 2)),
+           hjust = -0.1, vjust = 1.5, size = 3.5, colour = "#E84855") +
+  labs(
+    title = "Prior Posterior Update",
+    x = "Mean Prob(choice = 1)",
+    y = "Density",
+    fill = "Distribution"
   ) +
   theme_cowplot()
 
@@ -255,7 +281,10 @@ p4 <- ggplot(recovery_df, aes(x = factor(theta_true), y = theta_sd, fill = facto
 ## ud i æteren 
 
 p_prior
+prior_diag
 p_post
+post_diag
+p_prior_post
 p1
 p2
 p3
