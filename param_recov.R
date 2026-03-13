@@ -6,50 +6,48 @@
 set.seed(123)
 pacman::p_load(cmdstanr, posterior, tidyverse, cowplot)
 
-
 # 1. LOAD MODEL
 
-model <- cmdstan_model("./RL.stan",
-                       cpp_options = list(stan_threads = FALSE))
-T <- 100
+model <- cmdstan_model("./RL.stan", cpp_options = list(stan_threads = FALSE))
+n_trials <- 100
 rate_opponent <- 0.75  # biased opponent
 
 # 2. SIMULATION FUNCTION
 
-simulate_rl_mp <- function(alpha, tau, theta, T, rate_opponent) {
-  V <- numeric(T)
-  choice <- integer(T)
-  reward <- integer(T)
-  opponent_choice <- integer(T)
-
-  V[1] <- theta
-
-  for (t in 1:T) {
-
-    p <- plogis(tau * (2 * V[t] - 1))
-    choice[t] <- rbinom(1, 1, p)
-
+simulate_rl_mp <- function(alpha, tau, n_trials, rate_opponent) {
+  expected_prob <- numeric(n_trials)
+  choice <- integer(n_trials)
+  opponent_choice <- integer(n_trials)
+  
+  expected_prob[1] <- 0.5
+  
+  for (t in 1:n_trials) {
+    choice[t] <- rbinom(1, 1, plogis(tau * qlogis(expected_prob)))
+    
     opponent_choice[t] <- rbinom(1, 1, rate_opponent)
-
-    reward[t] <- as.integer(choice[t] == opponent_choice[t])
-
-    if (t < T) {
-      V[t+1] <- V[t] + alpha * (reward[t] - V[t])
+    
+    if (t < n_trials) {
+      expected_prob[t + 1] <- expected_prob[t] + alpha * (opponent_choice[t] - expected_prob[t])
     }
   }
   
-  list(choice = choice, opponent_choice = opponent_choice, reward = reward)
+  list(
+    choice = choice,
+    expected_prob = expected_prob,
+    opponent_choice = opponent_choice,
+    rate_opponent = rate_opponent
+  )
 }
 
 # 3. PRIOR PREDICTIVE CHECK
 
 dummy_data <- list(
-  T = T,
+  n_trials = n_trials,
   choice = rep(0, T),
   opponent_choice = rep(0, T),
   alpha_prior_params = 2,
-  tau_prior_sd = 1.5,
-  theta_prior_sd = 1.5
+  tau_prior_sd = 100,
+  initial_expected_prob = 0.5
 )
 
 fit_prior <- model$sample(
@@ -61,45 +59,54 @@ fit_prior <- model$sample(
   refresh = 500,
   iter_warmup = 0,
   fixed_param = TRUE
-  #adapt_delta = 0.75 
+  #adapt_delta = 0.75
 )
 
 draws_prior <- as_draws_matrix(fit_prior$draws("choice_priorp"))
 choice_cols <- grep("choice_priorp", colnames(draws_prior))
 prior_rep <- draws_prior[, choice_cols]
 
-prior_mean_trial <- colMeans(prior_rep)
-
-hist_df <- data.frame(mean_prob = prior_mean_trial)
-
-p_prior <- ggplot(hist_df, aes(x = mean_prob)) +
-  geom_density(fill = "royalblue3", colour = "black", alpha = 0.4) +
-  geom_vline(xintercept = 0.5, linetype = "dashed", colour = "grey40") +
-  annotate("text", x = 0.52, y = Inf, label = "Chance (0.5)",
-           hjust = 0, vjust = 1.5, size = 3.5, colour = "#E84855") +
-  labs(
-    title = "Prior Predictive Overall Choice Rate",
-    x = "Mean Prob(choice = 1)",
-    y = "Density"
+p_prior <- ggplot(data.frame(mean_prob = colMeans(prior_rep)), aes(x = mean_prob)) +
+  geom_density(
+    fill = "royalblue3",
+    colour = "black",
+    alpha = 0.4,
+    bounds = c(0, 1)
   ) +
+  geom_vline(xintercept = 0.5,
+             linetype = "dashed",
+             colour = "#E84855") +
+  annotate(
+    "text",
+    x = 0.5,
+    y = Inf,
+    label = "Chance (0.5)",
+    hjust = -0.1,
+    vjust = 1.5,
+    size = 3.5,
+    colour = "#E84855"
+  ) +
+  coord_cartesian(xlim = c(0, 1),
+                  ylim = c(0, NA),
+                  expand = c(0, 0)) +
+  labs(title = "Prior Predictive Overall Choice Rate", x = "Mean Prob(choice = 1)", y = "Density") +
   theme_cowplot()
 
 # 4. POSTERIOR PREDICTIVE CHECK
 
 sim_data <- simulate_rl_mp(
   alpha = 0.6,
-  tau = 3,
-  theta = 0.5,
-  T = T,
+  tau = 100,
+  n_trials = n_trials,
   rate_opponent = rate_opponent
 )
 data_list <- list(
-  T = T,
+  n_trials = n_trials,
   choice = sim_data$choice,
   opponent_choice = sim_data$opponent_choice,
   alpha_prior_params = 2,
-  tau_prior_sd = 1.5,
-  theta_prior_sd = 1.5
+  tau_prior_sd = 1,
+  initial_expected_prob = 0.5
 )
 fit_post <- model$sample(
   data = data_list,
@@ -109,33 +116,44 @@ fit_post <- model$sample(
   iter_warmup = 1000
 )
 
-draws_post <- as_draws_matrix(fit_post$draws("choice_postp"))
-choice_cols <- grep("choice_postp", colnames(draws_post))
+draws_post <- as_draws_matrix(fit_post$draws("choice_prob_postp"))
+choice_cols <- grep("choice_prob_postp", colnames(draws_post))
 post_rep <- draws_post[, choice_cols]
 
 # Overall choice rate distribution
-post_choice_means <- rowMeans(post_rep)
 
-hist_df <- data.frame(mean_prob = post_choice_means)
-
-p_post <- ggplot(hist_df, aes(x = mean_prob)) +
-  geom_density(fill = "royalblue3", colour = "black", alpha = 0.4) +
-  geom_vline(xintercept = mean(sim_data$choice), colour = "#E84855", linewidth = 0.8) +
-  annotate("text", x = mean(sim_data$choice), y = Inf,
-           label = paste0("true mean = ", round(mean(sim_data$choice), 2)),
-           hjust = -0.1, vjust = 1.5, size = 3.5, colour = "#E84855") +
-  labs(
-    title = "Posterior Predictive Overall Choice Rate",
-    x = "Mean Prob(choice = 1)",
-    y = "Count"
+p_post <- ggplot(data.frame(mean_prob = colMeans(post_rep)), aes(x = mean_prob)) +
+  geom_density(
+    fill = "royalblue3",
+    colour = "black",
+    alpha = 0.4,
+    bounds = c(0, 1)
   ) +
+  geom_vline(
+    xintercept = mean(post_rep),
+    linetype = "dashed",
+    colour = "#E84855"
+  ) +
+  annotate(
+    "text",
+    x = mean(post_rep),
+    y = Inf,
+    label = paste0("True mean = ", round(mean(post_rep), 2)),
+    hjust = -0.1,
+    vjust = 1.5,
+    size = 3.5,
+    colour = "#E84855"
+  ) +
+  coord_cartesian(xlim = c(0, 1),
+                  ylim = c(0, NA),
+                  expand = c(0, 0)) +
+  labs(title = "Posterior Predictive Overall Choice Rate", x = "Mean Prob(choice = 1)", y = "Count") +
   theme_cowplot()
 
 # 5. FULL JOINT PARAMETER RECOVERY
 
 alpha_grid  <- c(0.1, 0.5, 0.9)
 tau_grid    <- c(0.1, 5, 10)
-theta_grid  <- c(0.2, 0.5, 0.8)
 
 n_reps <- 1
 
@@ -144,51 +162,44 @@ counter <- 1
 
 for (alpha_true in alpha_grid) {
   for (tau_true in tau_grid) {
-    for (theta_true in theta_grid) {
-      for (rep in 1:n_reps) {
-        
-        sim <- simulate_rl_mp(
-          alpha = alpha_true,
-          tau = tau_true,
-          theta = theta_true,
-          T = T,
-          rate_opponent = rate_opponent
-        )
-        
-        data_list <- list(
-          T = T,
-          choice = sim$choice,
-          opponent_choice = sim$opponent_choice,
-          alpha_prior_params = 2,
-          tau_prior_sd = 1.5,
-          theta_prior_sd = 1.5
-        )
-        
-        fit <- model$sample(
-          data = data_list,
-          seed = 123,
-          chains = 4,
-          iter_sampling = 1000,
-          iter_warmup = 1000,
-          refresh = 0
-        )
-        
-        draws <- as_draws_df(fit$draws())
-        
-        recovery_results[[counter]] <- data.frame(
-          alpha_true = alpha_true,
-          alpha_est = mean(draws$alpha),
-          alpha_sd = sd(draws$alpha),
-          tau_true = tau_true,
-          tau_sd = sd(draws$tau),
-          tau_est = mean(draws$tau),
-          theta_true = theta_true,
-          theta_est = mean(draws$theta_prob),
-          theta_sd = sd(draws$theta_prob)
-        )
-        
-        counter <- counter + 1
-      }
+    for (rep in 1:n_reps) {
+      sim <- simulate_rl_mp(
+        alpha = alpha_true,
+        tau = tau_true,
+        n_trials = n_trials,
+        rate_opponent = rate_opponent
+      )
+      
+      data_list <- list(
+        n_trials = n_trials,
+        choice = sim$choice,
+        opponent_choice = sim$opponent_choice,
+        alpha_prior_params = 2,
+        tau_prior_sd = 1.5,
+        initial_expected_prob = 0.5
+      )
+      
+      fit <- model$sample(
+        data = data_list,
+        seed = 123,
+        chains = 4,
+        iter_sampling = 1000,
+        iter_warmup = 1000,
+        refresh = 0
+      )
+      
+      draws <- as_draws_df(fit$draws())
+      
+      recovery_results[[counter]] <- data.frame(
+        alpha_true = alpha_true,
+        alpha_est = mean(draws$alpha),
+        alpha_sd = sd(draws$alpha),
+        tau_true = tau_true,
+        tau_sd = sd(draws$tau),
+        tau_est = mean(draws$tau)
+      )
+      
+      counter <- counter + 1
     }
   }
 }
@@ -198,10 +209,9 @@ recovery_df <- bind_rows(recovery_results)
 # 6. RECOVERY PLOTS
 
 recovery_long <- recovery_df %>%
-  select(alpha_true, tau_true, theta_true,
-         alpha_est, tau_est, theta_est) %>%
+  select(alpha_true, tau_true, alpha_est, tau_est) %>%
   pivot_longer(
-    cols = c(alpha_est, tau_est, theta_est),
+    cols = c(alpha_est, tau_est),
     names_to = "parameter",
     values_to = "estimate"
   ) %>%
@@ -209,61 +219,68 @@ recovery_long <- recovery_df %>%
     true_value = case_when(
       parameter == "alpha_est" ~ alpha_true,
       parameter == "tau_est"   ~ tau_true,
-      parameter == "theta_est" ~ theta_true
-    ))
+    )
+  )
 
-## Actual plotting 
+## Actual plotting
 
-p1 <- ggplot(recovery_long, aes(x = true_value, y = estimate, colour = parameter)) +
+p1 <- ggplot(recovery_long,
+             aes(x = true_value, y = estimate, colour = parameter)) +
   geom_point(alpha = 0.8, size = 2) +
-  geom_abline(slope = 1, intercept = 0, linetype = "dashed", colour = "grey30") +
+  geom_abline(
+    slope = 1,
+    intercept = 0,
+    linetype = "dashed",
+    colour = "grey30"
+  ) +
   ylab("Estimated Value") +
   xlab("Ground Truth Value") +
-  facet_wrap(~parameter, scales = "free") +
+  facet_wrap( ~ parameter, scales = "free") +
   scale_colour_brewer(palette = "Set2", guide = "none") +
   theme_cowplot() +
   labs(title = "Joint Parameter Recovery")
 
 # Posterior SDs
-p2 <- ggplot(recovery_df, aes(x = factor(alpha_true), y = alpha_sd, fill = factor(alpha_true))) +
-  geom_boxplot(alpha = 0.5, linewidth = 0.4, width = 0.5) +
-  geom_jitter(aes(colour = factor(alpha_true)), width = 0.15, alpha = 0.9, size = 1.2) +
-  labs(
-    title = "Posterior SD of Alpha",
-    x = "True Alpha",
-    y = "Posterior SD"
+p2 <- ggplot(recovery_df, aes(
+  x = factor(alpha_true),
+  y = alpha_sd,
+  fill = factor(alpha_true)
+)) +
+  geom_boxplot(alpha = 0.5,
+               linewidth = 0.4,
+               width = 0.5) +
+  geom_jitter(
+    aes(colour = factor(alpha_true)),
+    width = 0.15,
+    alpha = 0.9,
+    size = 1.2
   ) +
-  theme_cowplot() + 
-  theme(legend.position = "none")
-
-p3 <- ggplot(recovery_df, aes(x = factor(tau_true), y = tau_sd, fill = factor(tau_true))) +
-  geom_boxplot(alpha = 0.5, linewidth = 0.4, width = 0.5) + 
-  geom_jitter(aes(colour = factor(tau_true)), width = 0.15, alpha = 0.9, size = 1.2) +
-  labs(
-    title = "Posterior SD of Tau",
-    x = "True Tau",
-    y = "Posterior SD"
-  ) +
+  labs(title = "Posterior SD of Alpha", x = "True Alpha", y = "Posterior SD") +
   theme_cowplot() +
   theme(legend.position = "none")
 
-p4 <- ggplot(recovery_df, aes(x = factor(theta_true), y = theta_sd, fill = factor(theta_true))) +
-  geom_boxplot(alpha = 0.5, linewidth = 0.4, width = 0.5) +
-  geom_jitter(aes(colour = factor(theta_true)), width = 0.15, alpha = 0.9, size = 1.2) +
-  labs(
-    title = "Posterior SD of Theta",
-    x = "True Theta",
-    y = "Posterior SD"
+p3 <- ggplot(recovery_df, aes(
+  x = factor(tau_true),
+  y = tau_sd,
+  fill = factor(tau_true)
+)) +
+  geom_boxplot(alpha = 0.5,
+               linewidth = 0.4,
+               width = 0.5) +
+  geom_jitter(
+    aes(colour = factor(tau_true)),
+    width = 0.15,
+    alpha = 0.9,
+    size = 1.2
   ) +
+  labs(title = "Posterior SD of Tau", x = "True Tau", y = "Posterior SD") +
   theme_cowplot() +
   theme(legend.position = "none")
 
-## ud i æteren 
+## ud i æteren
 
 p_prior
 p_post
 p1
 p2
 p3
-p4
-
