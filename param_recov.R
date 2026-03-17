@@ -63,9 +63,6 @@ fit_prior <- model$sample(
   #adapt_delta = 0.75 
 )
 
-## Prior sense
-
-powerscale_sensitivity(fit_prior)
 
 
 prior_diag <- mcmc_trace(fit_prior$draws(variables = c("alpha", "tau", "theta")))
@@ -113,6 +110,10 @@ fit_post <- model$sample(
   iter_warmup = 1000
 )
 
+
+## Prior sense
+
+powerscale_sensitivity(fit_prior)
 
 post_diag <- mcmc_trace(fit_post$draws(variables = c("alpha", "tau", "theta")))
 
@@ -295,4 +296,6 @@ p1
 p2
 p3
 p4
+
+powerscale_plot_dens(fit_post)
 

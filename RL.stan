@@ -38,6 +38,27 @@ model {
 }
 
 generated quantities {
+  
+   // LOG-LIKELIHOOD (for prior sense)
+  array[T] real log_lik; // defiining array
+  {
+    real V_ll = theta; // new var for the log lik
+    for (t in 1:T) {
+      log_lik[t] = bernoulli_logit_lpmf(choice[t] | tau * (2 * V_ll - 1)); // re running the learning
+      if (t < T) {
+        V_ll += alpha * (reward[t] - V_ll);  // Regenerating these vars in generated quantitites
+      }
+    }
+  }
+  
+  // LOG PRIOR (also for prior sense)
+  real lprior;
+  lprior = beta_lpdf(alpha | 2, 2)
+       + lognormal_lpdf(tau | 0, 1.5)
+       + beta_lpdf(theta | 2, 2);
+
+  
+  
   // PRIOR PREDICTIVE
   real<lower=0, upper=1> alpha_prior;
   real<lower=0> tau_prior;
