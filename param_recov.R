@@ -45,9 +45,9 @@ dummy_data <- list(
   n_trials = n_trials,
   choice = rep(0, n_trials), # fix: T is TRUE (=1) in R, not n_trials
   opponent_choice = rep(0, n_trials), # fix: same issue
-  alpha_prior_params = 2,
+  alpha_prior_shapes = 2,
   tau_prior_sd = 100,
-  initial_expected_prob = 0.5
+  initial_prob_choice = 0.5
 )
 
 fit_prior <- model$sample(
@@ -108,9 +108,9 @@ data_list <- list(
   n_trials = n_trials,
   choice = sim_data$choice,
   opponent_choice = sim_data$opponent_choice,
-  alpha_prior_params = 2,
+  alpha_prior_shapes = 2,
   tau_prior_sd = 1,
-  initial_expected_prob = 0.5
+  initial_prob_choice = 0.5
 )
 fit_post <- model$sample(
   data = data_list,
@@ -180,9 +180,9 @@ for (alpha_true in alpha_grid) {
         n_trials = n_trials,
         choice = sim$choice,
         opponent_choice = sim$opponent_choice,
-        alpha_prior_params = 2,
+        alpha_prior_shapes = 2,
         tau_prior_sd = 1.5,
-        initial_expected_prob = 0.5
+        initial_prob_choice = 0.5
       )
 
       fit <- model$sample(
