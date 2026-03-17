@@ -10,7 +10,7 @@ pacman::p_load(cmdstanr, posterior, tidyverse, cowplot)
 
 model <- cmdstan_model("./RL.stan", cpp_options = list(stan_threads = FALSE))
 n_trials <- 100
-rate_opponent <- 0.75  # biased opponent
+rate_opponent <- 0.75 # biased opponent
 
 # 2. SIMULATION FUNCTION
 
@@ -18,19 +18,19 @@ simulate_rl_mp <- function(alpha, tau, n_trials, rate_opponent) {
   expected_prob <- numeric(n_trials)
   choice <- integer(n_trials)
   opponent_choice <- integer(n_trials)
-  
+
   expected_prob[1] <- 0.5
-  
+
   for (t in 1:n_trials) {
     choice[t] <- rbinom(1, 1, plogis(tau * qlogis(expected_prob)))
-    
+
     opponent_choice[t] <- rbinom(1, 1, rate_opponent)
-    
+
     if (t < n_trials) {
       expected_prob[t + 1] <- expected_prob[t] + alpha * (opponent_choice[t] - expected_prob[t])
     }
   }
-  
+
   list(
     choice = choice,
     expected_prob = expected_prob,
@@ -43,8 +43,8 @@ simulate_rl_mp <- function(alpha, tau, n_trials, rate_opponent) {
 
 dummy_data <- list(
   n_trials = n_trials,
-  choice = rep(0, T),
-  opponent_choice = rep(0, T),
+  choice = rep(0, n_trials), # fix: T is TRUE (=1) in R, not n_trials
+  opponent_choice = rep(0, n_trials), # fix: same issue
   alpha_prior_params = 2,
   tau_prior_sd = 100,
   initial_expected_prob = 0.5
@@ -59,7 +59,7 @@ fit_prior <- model$sample(
   refresh = 500,
   iter_warmup = 0,
   fixed_param = TRUE
-  #adapt_delta = 0.75
+  # adapt_delta = 0.75
 )
 
 draws_prior <- as_draws_matrix(fit_prior$draws("choice_priorp"))
@@ -73,9 +73,11 @@ p_prior <- ggplot(data.frame(mean_prob = colMeans(prior_rep)), aes(x = mean_prob
     alpha = 0.4,
     bounds = c(0, 1)
   ) +
-  geom_vline(xintercept = 0.5,
-             linetype = "dashed",
-             colour = "#E84855") +
+  geom_vline(
+    xintercept = 0.5,
+    linetype = "dashed",
+    colour = "#E84855"
+  ) +
   annotate(
     "text",
     x = 0.5,
@@ -86,9 +88,11 @@ p_prior <- ggplot(data.frame(mean_prob = colMeans(prior_rep)), aes(x = mean_prob
     size = 3.5,
     colour = "#E84855"
   ) +
-  coord_cartesian(xlim = c(0, 1),
-                  ylim = c(0, NA),
-                  expand = c(0, 0)) +
+  coord_cartesian(
+    xlim = c(0, 1),
+    ylim = c(0, NA),
+    expand = c(0, 0)
+  ) +
   labs(title = "Prior Predictive Overall Choice Rate", x = "Mean Prob(choice = 1)", y = "Density") +
   theme_cowplot()
 
@@ -138,22 +142,24 @@ p_post <- ggplot(data.frame(mean_prob = colMeans(post_rep)), aes(x = mean_prob))
     "text",
     x = mean(post_rep),
     y = Inf,
-    label = paste0("True mean = ", round(mean(post_rep), 2)),
+    label = paste0("Posterior mean = ", round(mean(post_rep), 2)), # fix: this is the posterior mean, not a ground truth value
     hjust = -0.1,
     vjust = 1.5,
     size = 3.5,
     colour = "#E84855"
   ) +
-  coord_cartesian(xlim = c(0, 1),
-                  ylim = c(0, NA),
-                  expand = c(0, 0)) +
-  labs(title = "Posterior Predictive Overall Choice Rate", x = "Mean Prob(choice = 1)", y = "Count") +
+  coord_cartesian(
+    xlim = c(0, 1),
+    ylim = c(0, NA),
+    expand = c(0, 0)
+  ) +
+  labs(title = "Posterior Predictive Overall Choice Rate", x = "Mean Prob(choice = 1)", y = "Density") + # fix: geom_density, not a histogram
   theme_cowplot()
 
 # 5. FULL JOINT PARAMETER RECOVERY
 
-alpha_grid  <- c(0.1, 0.5, 0.9)
-tau_grid    <- c(0.1, 5, 10)
+alpha_grid <- c(0.1, 0.5, 0.9)
+tau_grid <- c(0.1, 5, 10)
 
 n_reps <- 1
 
@@ -169,7 +175,7 @@ for (alpha_true in alpha_grid) {
         n_trials = n_trials,
         rate_opponent = rate_opponent
       )
-      
+
       data_list <- list(
         n_trials = n_trials,
         choice = sim$choice,
@@ -178,7 +184,7 @@ for (alpha_true in alpha_grid) {
         tau_prior_sd = 1.5,
         initial_expected_prob = 0.5
       )
-      
+
       fit <- model$sample(
         data = data_list,
         seed = 123,
@@ -187,9 +193,9 @@ for (alpha_true in alpha_grid) {
         iter_warmup = 1000,
         refresh = 0
       )
-      
+
       draws <- as_draws_df(fit$draws())
-      
+
       recovery_results[[counter]] <- data.frame(
         alpha_true = alpha_true,
         alpha_est = mean(draws$alpha),
@@ -198,7 +204,7 @@ for (alpha_true in alpha_grid) {
         tau_sd = sd(draws$tau),
         tau_est = mean(draws$tau)
       )
-      
+
       counter <- counter + 1
     }
   }
@@ -218,14 +224,16 @@ recovery_long <- recovery_df %>%
   mutate(
     true_value = case_when(
       parameter == "alpha_est" ~ alpha_true,
-      parameter == "tau_est"   ~ tau_true,
+      parameter == "tau_est" ~ tau_true,
     )
   )
 
 ## Actual plotting
 
-p1 <- ggplot(recovery_long,
-             aes(x = true_value, y = estimate, colour = parameter)) +
+p1 <- ggplot(
+  recovery_long,
+  aes(x = true_value, y = estimate, colour = parameter)
+) +
   geom_point(alpha = 0.8, size = 2) +
   geom_abline(
     slope = 1,
@@ -235,7 +243,7 @@ p1 <- ggplot(recovery_long,
   ) +
   ylab("Estimated Value") +
   xlab("Ground Truth Value") +
-  facet_wrap( ~ parameter, scales = "free") +
+  facet_wrap(~parameter, scales = "free") +
   scale_colour_brewer(palette = "Set2", guide = "none") +
   theme_cowplot() +
   labs(title = "Joint Parameter Recovery")
@@ -246,9 +254,11 @@ p2 <- ggplot(recovery_df, aes(
   y = alpha_sd,
   fill = factor(alpha_true)
 )) +
-  geom_boxplot(alpha = 0.5,
-               linewidth = 0.4,
-               width = 0.5) +
+  geom_boxplot(
+    alpha = 0.5,
+    linewidth = 0.4,
+    width = 0.5
+  ) +
   geom_jitter(
     aes(colour = factor(alpha_true)),
     width = 0.15,
@@ -264,9 +274,11 @@ p3 <- ggplot(recovery_df, aes(
   y = tau_sd,
   fill = factor(tau_true)
 )) +
-  geom_boxplot(alpha = 0.5,
-               linewidth = 0.4,
-               width = 0.5) +
+  geom_boxplot(
+    alpha = 0.5,
+    linewidth = 0.4,
+    width = 0.5
+  ) +
   geom_jitter(
     aes(colour = factor(tau_true)),
     width = 0.15,
