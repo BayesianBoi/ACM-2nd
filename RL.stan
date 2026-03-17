@@ -76,4 +76,24 @@ generated quantities {
       }
     }
   }
+
+  // LOG PRIOR (for priorsense) //
+  real lprior;                                                                  // joint log prior density
+  lprior = beta_lpdf(alpha | alpha_prior_shapes, alpha_prior_shapes) + 
+    lognormal_lpdf(tau | 0, tau_prior_sd);
+
+  // LOG-LIKELIHOOD
+  array[n_trials] real log_lik;                                                 // log-likelihood of choices 
+  {                                                                             // simulating agent choices after learning from the data
+    real prob_choice = initial_prob_choice;
+
+    for (t in 1:n_trials) {
+
+        log_lik[t] = bernoulli_logit_lpmf(choice[t] | tau * logit(prob_choice)); 
+
+      if (t < n_trials) {
+        prob_choice += alpha * (opponent_choice[t] - prob_choice);
+      }
+    }
+  }
 }

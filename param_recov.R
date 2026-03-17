@@ -4,7 +4,7 @@
 # 0. IMPORTING DEPENDENCIES
 
 set.seed(123)
-pacman::p_load(cmdstanr, posterior, tidyverse, cowplot)
+pacman::p_load(cmdstanr, posterior, tidyverse, cowplot, priorsense)
 
 # 1. LOAD MODEL
 
@@ -46,7 +46,7 @@ dummy_data <- list(
   choice = rep(0, n_trials), # fix: T is TRUE (=1) in R, not n_trials
   opponent_choice = rep(0, n_trials), # fix: same issue
   alpha_prior_shapes = 2,
-  tau_prior_sd = 100,
+  tau_prior_sd = 1,
   initial_prob_choice = 0.5
 )
 
@@ -66,7 +66,7 @@ draws_prior <- as_draws_matrix(fit_prior$draws("choice_priorp"))
 choice_cols <- grep("choice_priorp", colnames(draws_prior))
 prior_rep <- draws_prior[, choice_cols]
 
-p_prior <- ggplot(data.frame(mean_prob = colMeans(prior_rep)), aes(x = mean_prob)) +
+prior_predictive_plot <- ggplot(data.frame(mean_prob = colMeans(prior_rep)), aes(x = mean_prob)) +
   geom_density(
     fill = "royalblue3",
     colour = "black",
@@ -95,6 +95,8 @@ p_prior <- ggplot(data.frame(mean_prob = colMeans(prior_rep)), aes(x = mean_prob
   ) +
   labs(title = "Prior Predictive Overall Choice Rate", x = "Mean Prob(choice = 1)", y = "Density") +
   theme_cowplot()
+
+prior_predictive_plot
 
 # 4. POSTERIOR PREDICTIVE CHECK
 
@@ -126,7 +128,7 @@ post_rep <- draws_post[, choice_cols]
 
 # Overall choice rate distribution
 
-p_post <- ggplot(data.frame(mean_prob = colMeans(post_rep)), aes(x = mean_prob)) +
+posterior_predictive_plot <- ggplot(data.frame(mean_prob = colMeans(post_rep)), aes(x = mean_prob)) +
   geom_density(
     fill = "royalblue3",
     colour = "black",
@@ -156,10 +158,14 @@ p_post <- ggplot(data.frame(mean_prob = colMeans(post_rep)), aes(x = mean_prob))
   labs(title = "Posterior Predictive Overall Choice Rate", x = "Mean Prob(choice = 1)", y = "Density") + # fix: geom_density, not a histogram
   theme_cowplot()
 
+posterior_predictive_plot
+
 # 5. FULL JOINT PARAMETER RECOVERY
 
 alpha_grid <- c(0.1, 0.5, 0.9)
 tau_grid <- c(0.1, 5, 10)
+alpha_grid <- c(0.1)
+tau_grid <- c(0.1)
 
 n_reps <- 1
 
@@ -228,9 +234,15 @@ recovery_long <- recovery_df %>%
     )
   )
 
+# 7. PRIOR SENSITIVITY ANALYSIS
+
+prior_sense_power_scaling_plot <- powerscale_plot_dens(fit_post, variables=c("alpha", "tau"))
+
+prior_sense_power_scaling_plot
+
 ## Actual plotting
 
-p1 <- ggplot(
+parameter_recovery_mean_estimates_plot <- ggplot(
   recovery_long,
   aes(x = true_value, y = estimate, colour = parameter)
 ) +
@@ -248,8 +260,10 @@ p1 <- ggplot(
   theme_cowplot() +
   labs(title = "Joint Parameter Recovery")
 
+parameter_recovery_mean_estimates_plot
+
 # Posterior SDs
-p2 <- ggplot(recovery_df, aes(
+parameter_recovery_alpha_plot <- ggplot(recovery_df, aes(
   x = factor(alpha_true),
   y = alpha_sd,
   fill = factor(alpha_true)
@@ -269,7 +283,9 @@ p2 <- ggplot(recovery_df, aes(
   theme_cowplot() +
   theme(legend.position = "none")
 
-p3 <- ggplot(recovery_df, aes(
+parameter_recovery_alpha_plot
+
+parameter_recovery_tau_plot <- ggplot(recovery_df, aes(
   x = factor(tau_true),
   y = tau_sd,
   fill = factor(tau_true)
@@ -289,10 +305,6 @@ p3 <- ggplot(recovery_df, aes(
   theme_cowplot() +
   theme(legend.position = "none")
 
-## ud i æteren
+parameter_recovery_tau_plot
 
-p_prior
-p_post
-p1
-p2
-p3
+## ud i æteren
