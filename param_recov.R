@@ -6,7 +6,7 @@
 # 0. IMPORTING DEPENDENCIES
 
 set.seed(123)
-pacman::p_load(cmdstanr, posterior, tidyverse, cowplot, bayesplot)
+pacman::p_load(cmdstanr, posterior, tidyverse, cowplot, bayesplot, priorsense)
 
 
 # 1. LOAD MODEL
@@ -63,6 +63,11 @@ fit_prior <- model$sample(
   #adapt_delta = 0.75 
 )
 
+## Prior sense
+
+powerscale_sensitivity(fit_prior)
+
+
 prior_diag <- mcmc_trace(fit_prior$draws(variables = c("alpha", "tau", "theta")))
 
 draws_prior <- as_draws_matrix(fit_prior$draws("choice_priorp"))
@@ -107,6 +112,7 @@ fit_post <- model$sample(
   iter_sampling = 1000,
   iter_warmup = 1000
 )
+
 
 post_diag <- mcmc_trace(fit_post$draws(variables = c("alpha", "tau", "theta")))
 
