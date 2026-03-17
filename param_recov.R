@@ -102,7 +102,7 @@ prior_predictive_plot
 
 sim_data <- simulate_rl_mp(
   alpha = 0.6,
-  tau = 100,
+  tau = 5,
   n_trials = n_trials,
   rate_opponent = rate_opponent
 )
