@@ -1,6 +1,3 @@
-# TODO
-# - implement more sophisticated adversary agent
-
 # 0. IMPORTING DEPENDENCIES
 
 set.seed(123)
@@ -10,11 +7,14 @@ pacman::p_load(cmdstanr, posterior, tidyverse, cowplot, priorsense)
 
 model <- cmdstan_model("./RL.stan", cpp_options = list(stan_threads = FALSE))
 n_trials <- 100
-rate_opponent <- 0.75 # biased opponent
+
+# volatile opponent: bias changes every block
+block_size <- 20
+block_biases <- c(0.1, 0.2, 0.3, 0.4, 0.5)
 
 # 2. SIMULATION FUNCTION
 
-simulate_rl_mp <- function(alpha, tau, n_trials, rate_opponent) {
+simulate_rl_mp <- function(alpha, tau, n_trials, block_biases, block_size) {
   expected_prob <- numeric(n_trials)
   choice <- integer(n_trials)
   opponent_choice <- integer(n_trials)
@@ -22,9 +22,10 @@ simulate_rl_mp <- function(alpha, tau, n_trials, rate_opponent) {
   expected_prob[1] <- 0.5
 
   for (t in 1:n_trials) {
-    choice[t] <- rbinom(1, 1, plogis(tau * qlogis(expected_prob)))
+    choice[t] <- rbinom(1, 1, plogis(tau * qlogis(expected_prob[t])))
 
-    opponent_choice[t] <- rbinom(1, 1, rate_opponent)
+    block <- ceiling(t / block_size)
+    opponent_choice[t] <- rbinom(1, 1, block_biases[block])
 
     if (t < n_trials) {
       expected_prob[t + 1] <- expected_prob[t] + alpha * (opponent_choice[t] - expected_prob[t])
@@ -35,7 +36,7 @@ simulate_rl_mp <- function(alpha, tau, n_trials, rate_opponent) {
     choice = choice,
     expected_prob = expected_prob,
     opponent_choice = opponent_choice,
-    rate_opponent = rate_opponent
+    block_biases = block_biases
   )
 }
 
@@ -43,7 +44,7 @@ simulate_rl_mp <- function(alpha, tau, n_trials, rate_opponent) {
 
 dummy_data <- list(
   n_trials = n_trials,
-  choice = rep(0, n_trials), # fix: T is TRUE (=1) in R, not n_trials
+  choice = rep(0, n_trials), # fix: before we had rep(0, T). That does not mean 0, trials. R takes T as TRUE (and thus 1), so we need to change this!
   opponent_choice = rep(0, n_trials), # fix: same issue
   alpha_prior_shapes = 2,
   tau_prior_sd = 1,
@@ -66,7 +67,14 @@ draws_prior <- as_draws_matrix(fit_prior$draws("choice_priorp"))
 choice_cols <- grep("choice_priorp", colnames(draws_prior))
 prior_rep <- draws_prior[, choice_cols]
 
-prior_predictive_plot <- ggplot(data.frame(mean_prob = colMeans(prior_rep)), aes(x = mean_prob)) +
+# gammel version: colMeans averages over draws per trial. Since the prior predictive does
+# not update expected_prob (stays at 0.5), all trials are exchangeable, so
+# colMeans gives ~100 near-identical values — a meaningless spike.
+# p_prior <- ggplot(data.frame(mean_prob = colMeans(prior_rep)), aes(x = mean_prob)) +
+
+# rowMeans gives the overall choice rate per draw, showing the distribution of
+# agent behaviours the prior produces
+p_prior <- ggplot(data.frame(mean_prob = rowMeans(prior_rep)), aes(x = mean_prob)) +
   geom_density(
     fill = "royalblue3",
     colour = "black",
@@ -96,7 +104,7 @@ prior_predictive_plot <- ggplot(data.frame(mean_prob = colMeans(prior_rep)), aes
   labs(title = "Prior Predictive Overall Choice Rate", x = "Mean Prob(choice = 1)", y = "Density") +
   theme_cowplot()
 
-prior_predictive_plot
+p_prior
 
 # 4. POSTERIOR PREDICTIVE CHECK
 
@@ -104,7 +112,8 @@ sim_data <- simulate_rl_mp(
   alpha = 0.6,
   tau = 5,
   n_trials = n_trials,
-  rate_opponent = rate_opponent
+  block_biases = block_biases,
+  block_size = block_size
 )
 data_list <- list(
   n_trials = n_trials,
@@ -126,39 +135,40 @@ draws_post <- as_draws_matrix(fit_post$draws("choice_prob_postp"))
 choice_cols <- grep("choice_prob_postp", colnames(draws_post))
 post_rep <- draws_post[, choice_cols]
 
-# Overall choice rate distribution
+# build the true block bias per trial for the step function
+true_bias_per_trial <- rep(block_biases, each = block_size)
 
-posterior_predictive_plot <- ggplot(data.frame(mean_prob = colMeans(post_rep)), aes(x = mean_prob)) +
-  geom_density(
-    fill = "royalblue3",
-    colour = "black",
-    alpha = 0.4,
-    bounds = c(0, 1)
-  ) +
-  geom_vline(
-    xintercept = mean(post_rep),
-    linetype = "dashed",
-    colour = "#E84855"
-  ) +
-  annotate(
-    "text",
-    x = mean(post_rep),
-    y = Inf,
-    label = paste0("Posterior mean = ", round(mean(post_rep), 2)), # fix: this is the posterior mean, not a ground truth value
-    hjust = -0.1,
-    vjust = 1.5,
-    size = 3.5,
-    colour = "#E84855"
-  ) +
-  coord_cartesian(
-    xlim = c(0, 1),
-    ylim = c(0, NA),
-    expand = c(0, 0)
-  ) +
-  labs(title = "Posterior Predictive Overall Choice Rate", x = "Mean Prob(choice = 1)", y = "Density") + # fix: geom_density, not a histogram
-  theme_cowplot()
+# learning trajectory: agent's expected_prob vs true block biases
+trajectory_df <- data.frame(
+  trial = 1:n_trials,
+  agent_mean = colMeans(post_rep),
+  agent_lower = apply(post_rep, 2, quantile, 0.05),
+  agent_upper = apply(post_rep, 2, quantile, 0.95),
+  true_bias = true_bias_per_trial,
+  opponent = sim_data$opponent_choice # plotting the opponent choice also
+)
 
-posterior_predictive_plot
+p_post <- ggplot(trajectory_df, aes(x = trial)) +
+  geom_point(aes(y = opponent, colour = "Opponent choices"), size = 1.2, alpha = 0.4) +
+  geom_step(aes(y = true_bias, colour = "True bias"), linewidth = 1, linetype = "dashed") +
+  geom_ribbon(aes(ymin = agent_lower, ymax = agent_upper), fill = "royalblue3", alpha = 0.25) +
+  geom_line(aes(y = agent_mean, colour = "Agent belief (posterior)"), linewidth = 0.8) +
+  scale_colour_manual(
+    values = c("Opponent choices" = "grey50",
+               "True bias" = "#E84855",
+               "Agent belief (posterior)" = "royalblue3")
+  ) +
+  coord_cartesian(ylim = c(0, 1)) +
+  labs(
+    title = "Posterior Predictive: Learning Trajectory",
+    x = "Trial",
+    y = "P(opponent = 1)",
+    colour = NULL
+  ) +
+  theme_cowplot() +
+  theme(legend.position = "bottom")
+
+p_post
 
 
 
@@ -253,7 +263,8 @@ for (alpha_true in alpha_grid) {
         alpha = alpha_true,
         tau = tau_true,
         n_trials = n_trials,
-        rate_opponent = rate_opponent
+        block_biases = block_biases,
+        block_size = block_size
       )
 
       data_list <- list(
@@ -295,7 +306,7 @@ recovery_df <- bind_rows(recovery_results)
 # 6. RECOVERY PLOTS
 
 recovery_long <- recovery_df %>%
-  select(alpha_true, tau_true, alpha_est, tau_est) %>%
+  select(alpha_true, tau_true, alpha_est, tau_est, alpha_sd, tau_sd) %>%
   pivot_longer(
     cols = c(alpha_est, tau_est),
     names_to = "parameter",
@@ -305,6 +316,10 @@ recovery_long <- recovery_df %>%
     true_value = case_when(
       parameter == "alpha_est" ~ alpha_true,
       parameter == "tau_est" ~ tau_true,
+    ),
+    sd = case_when(
+      parameter == "alpha_est" ~ alpha_sd,
+      parameter == "tau_est" ~ tau_sd,
     )
   )
 
@@ -320,13 +335,18 @@ parameter_recovery_mean_estimates_plot <- ggplot(
   recovery_long,
   aes(x = true_value, y = estimate, colour = parameter)
 ) +
-  geom_point(alpha = 0.8, size = 2) +
   geom_abline(
     slope = 1,
     intercept = 0,
     linetype = "dashed",
     colour = "grey30"
   ) +
+  # adding error bars now- question is if we should use sd or .05/95 confidence intervals instead
+  geom_errorbar(
+    aes(ymin = estimate - sd, ymax = estimate + sd),
+    width = 0, alpha = 0.5
+  ) +
+  geom_point(alpha = 0.8, size = 2) +
   ylab("Estimated Value") +
   xlab("Ground Truth Value") +
   facet_wrap(~parameter, scales = "free") +
@@ -380,5 +400,51 @@ parameter_recovery_tau_plot <- ggplot(recovery_df, aes(
   theme(legend.position = "none")
 
 parameter_recovery_tau_plot
+
+# Prior vs Posterior density plots
+draws_fit <- as_draws_df(fit_post$draws())
+
+alpha_true_val <- 0.6
+tau_true_val <- 5
+
+# Alpha: prior vs posterior
+alpha_prior_samples <- rbeta(4000, dummy_data$alpha_prior_shapes, dummy_data$alpha_prior_shapes)
+alpha_df <- data.frame(
+  value = c(alpha_prior_samples, draws_fit$alpha),
+  distribution = rep(c("Prior", "Posterior"), each = length(alpha_prior_samples))
+)
+
+p2 <- ggplot(alpha_df, aes(x = value, fill = distribution)) +
+  geom_density(alpha = 0.4, colour = "black") +
+  geom_vline(xintercept = alpha_true_val, linetype = "dashed", colour = "#E84855", linewidth = 0.8) +
+  annotate("text", x = alpha_true_val, y = Inf, label = paste0("True (", alpha_true_val, ")"),
+           hjust = -0.1, vjust = 1.5, size = 3.5, colour = "#E84855") +
+  scale_fill_manual(values = c("Prior" = "grey70", "Posterior" = "royalblue3")) +
+  coord_cartesian(xlim = c(0, 1)) +
+  labs(title = "Alpha: Prior vs Posterior", x = "Alpha", y = "Density", fill = NULL) +
+  theme_cowplot() +
+  theme(legend.position = "bottom")
+
+# Tau: prior vs posterior
+# Use tau_prior_sd = 1 (from the posterior fit, not recovery loop's data_list)
+tau_prior_samples <- rlnorm(4000, 0, 1)
+tau_df <- data.frame(
+  value = c(tau_prior_samples, draws_fit$tau),
+  distribution = rep(c("Prior", "Posterior"), each = length(tau_prior_samples))
+)
+
+p3 <- ggplot(tau_df, aes(x = value, fill = distribution)) +
+  geom_density(alpha = 0.4, colour = "black") +
+  geom_vline(xintercept = tau_true_val, linetype = "dashed", colour = "#E84855", linewidth = 0.8) +
+  annotate("text", x = tau_true_val, y = Inf, label = paste0("True (", tau_true_val, ")"),
+           hjust = -0.1, vjust = 1.5, size = 3.5, colour = "#E84855") +
+  scale_fill_manual(values = c("Prior" = "grey70", "Posterior" = "royalblue3")) +
+  labs(title = "Tau: Prior vs Posterior", x = "Tau", y = "Density", fill = NULL) +
+  theme_cowplot() +
+  theme(legend.position = "bottom")
+
+p2
+
+p3
 
 ## ud i æteren
