@@ -2,7 +2,6 @@
 
 // TODO
 // - migrate model specification syntax "target += "
-// - implement log-Likelihood
 
 data {
   int<lower=1> n_trials;                                                        // number of trials
