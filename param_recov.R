@@ -1,58 +1,73 @@
-# TODO
-# - implement more sophisticated adversary agent
-
 # 0. IMPORTING DEPENDENCIES
 
 set.seed(123)
-pacman::p_load(cmdstanr, posterior, tidyverse, cowplot, bayesplot)
-
+pacman::p_load(cmdstanr, posterior, tidyverse, cowplot, priorsense)
 
 # 1. LOAD MODEL
 
-model <- cmdstan_model("./RL.stan",
-                       cpp_options = list(stan_threads = FALSE))
-T <- 100
-rate_opponent <- 0.75  # biased opponent
+model <- cmdstan_model("./RL.stan", cpp_options = list(stan_threads = FALSE))
+n_trials <- 100
 
-# 2. SIMULATION FUNCTION
+# Volatile opponent: bias changes every block
+block_size <- 20
+block_biases <- c(0.1, 0.2, 0.3, 0.4, 0.5)
 
-simulate_rl_mp <- function(alpha, tau, T, rate_opponent) {
-  V <- numeric(T)
-  choice <- integer(T)
-  opponent_choice <- integer(T)
+# 2. SIMULATION FUNCTIONS
 
-  V[1] <- 0.5
+simulate_opponent_choices <- function(n_trials, block_biases, block_size) {
+  opponent_choice <- integer(n_trials)
 
-  for (t in 1:T) {
-
-    p <- plogis(tau * (2 * V[t] - 1))
-    choice[t] <- rbinom(1, 1, p)
-
-    opponent_choice[t] <- rbinom(1, 1, rate_opponent)
-
-    if (t < T) {
-      V[t+1] <- V[t] + alpha * (opponent_choice[t] - V[t])
-    }
+  for (t in seq_len(n_trials)) {
+    block <- ceiling(t / block_size)
+    opponent_choice[t] <- rbinom(1, 1, block_biases[block])
   }
-  
-  list(choice = choice, opponent_choice = opponent_choice)
+
+  opponent_choice
 }
 
-compute_ebfmi <- function(energy_vec) {
-  if (length(energy_vec) < 2 || isTRUE(all.equal(stats::var(energy_vec), 0))) {
-    return(NA_real_)
+simulate_rl_mp <- function(alpha, tau, n_trials, block_biases, block_size) {
+  expected_prob <- numeric(n_trials)
+  choice <- integer(n_trials)
+  opponent_choice <- integer(n_trials)
+
+  expected_prob[1] <- 0.5
+
+  for (t in seq_len(n_trials)) {
+    choice[t] <- rbinom(1, 1, plogis(tau * qlogis(expected_prob[t])))
+
+    block <- ceiling(t / block_size)
+    opponent_choice[t] <- rbinom(1, 1, block_biases[block])
+
+    if (t < n_trials) {
+      expected_prob[t + 1] <- expected_prob[t] + alpha * (opponent_choice[t] - expected_prob[t])
+    }
   }
-  mean(diff(energy_vec)^2) / stats::var(energy_vec)
+
+  list(
+    choice = choice,
+    expected_prob = expected_prob,
+    opponent_choice = opponent_choice,
+    block_biases = block_biases,
+    alpha = alpha,
+    tau = tau
+  )
 }
 
 # 3. PRIOR PREDICTIVE CHECK
 
+prior_opponent_choice <- simulate_opponent_choices(
+  n_trials = n_trials,
+  block_biases = block_biases,
+  block_size = block_size
+)
+
 dummy_data <- list(
-  T = T,
-  choice = rep(0, T),
-  opponent_choice = rep(0, T),
-  alpha_prior_params = 2,
-  tau_prior_sd = 1.5
+  n_trials = n_trials,
+  choice = rep(0, n_trials),
+  opponent_choice = prior_opponent_choice,
+  alpha_prior_shapes = 2,
+  tau_prior_sd = 1,
+  initial_prob_choice = 0.5
 )
 
 fit_prior <- model$sample(
@@ -64,31 +79,69 @@ fit_prior <- model$sample(
   refresh = 500,
   iter_warmup = 0,
   fixed_param = TRUE
-  #adapt_delta = 0.75 
 )
 
-# Use draw-level expected rates from predictive probabilities.
-# This summarizes each posterior/prior draw by its mean predicted rate over trials
-# (continuous, bounded in [0,1], and less noisy than averaging binary choices).
-draws_prior_prob <- as_draws_matrix(fit_prior$draws("choice_prob_priorp"))
-prior_prob_cols <- grep("^choice_prob_priorp\\[", colnames(draws_prior_prob))
-prior_rates <- rowMeans(draws_prior_prob[, prior_prob_cols])
+draws_prior <- as_draws_matrix(fit_prior$draws("choice_priorp"))
+choice_cols <- grep("choice_priorp", colnames(draws_prior))
+prior_rep <- draws_prior[, choice_cols]
+
+# Summarize each draw by its overall choice rate so the plot reflects the
+# distribution of prior-predicted agent behavior under the same volatile workflow as main.
+p_prior <- ggplot(data.frame(mean_prob = rowMeans(prior_rep)), aes(x = mean_prob)) +
+  geom_density(
+    fill = "royalblue3",
+    colour = "black",
+    alpha = 0.4,
+    bounds = c(0, 1)
+  ) +
+  geom_vline(
+    xintercept = 0.5,
+    linetype = "dashed",
+    colour = "#E84855"
+  ) +
+  annotate(
+    "text",
+    x = 0.5,
+    y = Inf,
+    label = "Chance (0.5)",
+    hjust = -0.1,
+    vjust = 1.5,
+    size = 3.5,
+    colour = "#E84855"
+  ) +
+  coord_cartesian(
+    xlim = c(0, 1),
+    ylim = c(0, NA),
+    expand = c(0, 0)
+  ) +
+  labs(
+    title = "Prior Predictive Overall Choice Rate",
+    x = "Mean Prob(choice = 1)",
+    y = "Density"
+  ) +
+  theme_cowplot()
+
+p_prior
 
 # 4. POSTERIOR PREDICTIVE CHECK
 
 sim_data <- simulate_rl_mp(
   alpha = 0.6,
-  tau = 3,
-  T = T,
-  rate_opponent = rate_opponent
+  tau = 5,
+  n_trials = n_trials,
+  block_biases = block_biases,
+  block_size = block_size
 )
+
 data_list <- list(
-  T = T,
+  n_trials = n_trials,
   choice = sim_data$choice,
   opponent_choice = sim_data$opponent_choice,
-  alpha_prior_params = 2,
-  tau_prior_sd = 1.5
+  alpha_prior_shapes = 2,
+  tau_prior_sd = 2.5,
+  initial_prob_choice = 0.5
 )
+
 fit_post <- model$sample(
   data = data_list,
   seed = 123,
@@ -97,247 +150,173 @@ fit_post <- model$sample(
   iter_warmup = 1000
 )
 
-# 4a. MCMC DIAGNOSTICS (HAIRY CATERPILLAR + TABLES)
+draws_post <- as_draws_matrix(fit_post$draws("choice_prob_postp"))
+choice_cols <- grep("choice_prob_postp", colnames(draws_post))
+post_rep <- draws_post[, choice_cols]
 
-trace_vars <- c("alpha", "tau")
-trace_draws <- fit_post$draws(variables = trace_vars, format = "draws_array")
+true_bias_per_trial <- rep(block_biases, each = block_size)
 
-p_mcmc_trace <- bayesplot::mcmc_trace(trace_draws) +
-  facet_wrap(~parameter, ncol = 1, scales = "free_y") +
-  labs(title = "MCMC Trace Plot") +
-  theme_cowplot()
-
-param_diag_tbl <- fit_post$summary(
-  variables = c("alpha", "tau")
-) %>%
-  select(any_of(c(
-    "variable", "mean", "sd", "rhat", "ess_bulk", "ess_tail", "mcse_mean", "mcse_sd"
-  )))
-
-sampler_diag_draws <- posterior::as_draws_df(
-  fit_post$sampler_diagnostics(format = "draws_df")
+trajectory_df <- data.frame(
+  trial = seq_len(n_trials),
+  agent_mean = colMeans(post_rep),
+  agent_lower = apply(post_rep, 2, quantile, 0.05),
+  agent_upper = apply(post_rep, 2, quantile, 0.95),
+  true_bias = true_bias_per_trial,
+  opponent = sim_data$opponent_choice
 )
 
-ebfmi_by_chain <- sampler_diag_draws %>%
-  group_by(.chain) %>%
-  summarise(ebfmi = compute_ebfmi(energy__), .groups = "drop")
-
-sampler_diag_tbl <- tibble(
-  metric = c(
-    "Total divergences",
-    "Transitions at max treedepth (10)",
-    "Min E-BFMI across chains",
-    "Max R-hat (key params)",
-    "Min bulk ESS (key params)",
-    "Min tail ESS (key params)"
-  ),
-  value = c(
-    sum(sampler_diag_draws$divergent__),
-    sum(sampler_diag_draws$treedepth__ >= 10),
-    min(ebfmi_by_chain$ebfmi, na.rm = TRUE),
-    max(param_diag_tbl$rhat, na.rm = TRUE),
-    min(param_diag_tbl$ess_bulk, na.rm = TRUE),
-    min(param_diag_tbl$ess_tail, na.rm = TRUE)
-  ),
-  guideline = c(
-    "0",
-    "0",
-    "> 0.3",
-    "< 1.01",
-    "as large as possible",
-    "as large as possible"
-  )
-)
-
-print(param_diag_tbl)
-print(sampler_diag_tbl)
-
-draws_post_prob <- as_draws_matrix(fit_post$draws("choice_prob_postp"))
-post_prob_cols <- grep("^choice_prob_postp\\[", colnames(draws_post_prob))
-post_rates <- rowMeans(draws_post_prob[, post_prob_cols])
-
-prior_post_df <- bind_rows(
-  tibble(rate = prior_rates, source = "Prior predictive"),
-  tibble(rate = post_rates, source = "Posterior predictive")
-)
-
-# Most interpretable PPC on a 0-1 rate scale:
-# each point is one draw's overall predicted rate.
-p_prior_post <- ggplot(prior_post_df, aes(x = rate, fill = source, colour = source)) +
-  geom_density(alpha = 0.25, linewidth = 0.8) +
-  geom_vline(xintercept = 0.5, linetype = "dashed", colour = "grey50") +
-  geom_vline(xintercept = rate_opponent, colour = "#2C7FB8", linewidth = 0.9) +
-  geom_vline(xintercept = mean(sim_data$choice), colour = "#E84855", linewidth = 0.8) +
-  annotate(
-    "text", x = rate_opponent, y = Inf,
-    label = paste0("Opponent rate = ", round(rate_opponent, 2)),
-    hjust = -0.1, vjust = 1.8, size = 3.5, colour = "#2C7FB8"
+p_post <- ggplot(trajectory_df, aes(x = trial)) +
+  geom_point(aes(y = opponent, colour = "Opponent choices"), size = 1.2, alpha = 0.4) +
+  geom_step(aes(y = true_bias, colour = "True bias"), linewidth = 1, linetype = "dashed") +
+  geom_ribbon(aes(ymin = agent_lower, ymax = agent_upper), fill = "royalblue3", alpha = 0.25) +
+  geom_line(aes(y = agent_mean, colour = "Agent belief (posterior)"), linewidth = 0.8) +
+  scale_colour_manual(
+    values = c(
+      "Opponent choices" = "grey50",
+      "True bias" = "#E84855",
+      "Agent belief (posterior)" = "royalblue3"
+    )
   ) +
-  annotate(
-    "text", x = mean(sim_data$choice), y = Inf,
-    label = paste0("Observed rate = ", round(mean(sim_data$choice), 2)),
-    hjust = -0.1, vjust = 3.2, size = 3.5, colour = "#E84855"
-  ) +
+  coord_cartesian(ylim = c(0, 1)) +
   labs(
-    title = "Prior vs Posterior Predictive Mean Choice Rate",
-    x = "Rate (0-1)",
-    y = "Density",
-    fill = "",
-    colour = ""
+    title = "Posterior Predictive: Learning Trajectory",
+    x = "Trial",
+    y = "P(opponent = 1)",
+    colour = NULL
   ) +
-  coord_cartesian(xlim = c(0, 1)) +
-  scale_x_continuous(breaks = seq(0, 1, 0.1)) +
-  theme_cowplot()
+  theme_cowplot() +
+  theme(legend.position = "bottom")
 
-# Additional "main-style" plot on Mean Prob(choice = 1), using binary predictive choices.
-draws_prior_bin <- as_draws_matrix(fit_prior$draws("choice_priorp"))
-prior_bin_cols <- grep("^choice_priorp\\[", colnames(draws_prior_bin))
-prior_mean_prob <- rowMeans(draws_prior_bin[, prior_bin_cols])
+p_post
 
-draws_post_bin <- as_draws_matrix(fit_post$draws("choice_postp"))
-post_bin_cols <- grep("^choice_postp\\[", colnames(draws_post_bin))
-post_mean_prob <- rowMeans(draws_post_bin[, post_bin_cols])
+# 5. PRIOR-POSTERIOR UPDATES
 
-prior_post_meanprob_df <- bind_rows(
-  tibble(mean_prob = prior_mean_prob, source = "Prior predictive"),
-  tibble(mean_prob = post_mean_prob, source = "Posterior predictive")
-)
+draws_alpha_prior <- as_draws_matrix(fit_post$draws("alpha_prior"))[, 1]
+draws_tau_prior <- as_draws_matrix(fit_post$draws("tau_prior"))[, 1]
 
-p_prior_post_meanprob <- ggplot(
-  prior_post_meanprob_df,
-  aes(x = mean_prob, fill = source, colour = source)
-) +
-  geom_density(alpha = 0.25, linewidth = 0.8) +
-  geom_vline(xintercept = 0.5, linetype = "dashed", colour = "grey50") +
-  geom_vline(xintercept = mean(sim_data$choice), colour = "#E84855", linewidth = 0.8) +
+draws_alpha_post <- as_draws_matrix(fit_post$draws("alpha"))[, 1]
+draws_tau_post <- as_draws_matrix(fit_post$draws("tau"))[, 1]
+
+draws_alpha_prior_df <- data.frame(alpha_prior = draws_alpha_prior)
+draws_alpha_post_df <- data.frame(alpha = draws_alpha_post)
+draws_tau_prior_df <- data.frame(tau_prior = draws_tau_prior)
+draws_tau_post_df <- data.frame(tau = draws_tau_post)
+
+plot_alpha <- ggplot() +
+  geom_density(
+    data = draws_alpha_prior_df, aes(x = alpha_prior),
+    fill = "grey60",
+    colour = "grey40",
+    alpha = 0.35,
+    bounds = c(0, 1)
+  ) +
+  geom_density(
+    data = draws_alpha_post_df, aes(x = alpha),
+    fill = "royalblue3",
+    colour = "black",
+    alpha = 0.40,
+    bounds = c(0, 1)
+  ) +
+  annotate("text", x = 0.8, y = Inf, label = "Prior", hjust = 0, vjust = 1.5, size = 5, colour = "grey40") +
+  annotate("text", x = 0.8, y = Inf, label = "Posterior", hjust = 0, vjust = 3.2, size = 5, colour = "royalblue3") +
+  geom_vline(xintercept = sim_data$alpha, linetype = "dashed", colour = "#E84855", linewidth = 0.8) +
   annotate(
-    "text", x = mean(sim_data$choice), y = Inf,
-    label = paste0("Observed mean = ", round(mean(sim_data$choice), 2)),
-    hjust = -0.1, vjust = 1.8, size = 3.5, colour = "#E84855"
+    "text",
+    x = sim_data$alpha,
+    y = Inf,
+    label = paste0("True (", sim_data$alpha, ")"),
+    hjust = -0.1,
+    vjust = 1.5,
+    size = 3.5,
+    colour = "#E84855"
   ) +
+  coord_cartesian(xlim = c(0, 1), ylim = c(0, NA), expand = c(0, 0)) +
   labs(
-    title = "Prior vs Posterior Predictive Mean Prob(choice = 1)",
-    x = "Mean Prob(choice = 1)",
-    y = "Density",
-    fill = "",
-    colour = ""
-  ) +
-  coord_cartesian(xlim = c(0, 1)) +
-  theme_cowplot()
-
-# 5. SIMULATION-BASED CALIBRATION (SBC)
-
-n_sbc <- 20
-sbc_results <- vector("list", n_sbc)
-
-for (i in 1:n_sbc) {
-  alpha_true <- rbeta(1, 2, 2)
-  tau_true <- rlnorm(1, meanlog = 0, sdlog = 1.5)
-
-  sim_sbc <- simulate_rl_mp(
-    alpha = alpha_true,
-    tau = tau_true,
-    T = T,
-    rate_opponent = rate_opponent
-  )
-
-  sbc_data <- list(
-    T = T,
-    choice = sim_sbc$choice,
-    opponent_choice = sim_sbc$opponent_choice,
-    alpha_prior_params = 2,
-    tau_prior_sd = 1.5
-  )
-
-  fit_sbc <- model$sample(
-    data = sbc_data,
-    seed = 1000 + i,
-    chains = 2,
-    parallel_chains = 2,
-    iter_sampling = 500,
-    iter_warmup = 500,
-    refresh = 0
-  )
-
-  sbc_draws <- as_draws_df(fit_sbc$draws(c("alpha", "tau")))
-  n_draws <- nrow(sbc_draws)
-
-  sbc_results[[i]] <- tibble(
-    rep = i,
-    parameter = c("alpha", "tau"),
-    rank = c(
-      sum(sbc_draws$alpha < alpha_true),
-      sum(sbc_draws$tau < tau_true)
-    ),
-    n_draws = n_draws
-  )
-}
-
-sbc_df <- bind_rows(sbc_results) %>%
-  mutate(rank_scaled = rank / n_draws)
-
-p_sbc <- ggplot(sbc_df, aes(x = rank_scaled)) +
-  geom_histogram(bins = 10, fill = "royalblue3", colour = "black", alpha = 0.6) +
-  geom_hline(yintercept = n_sbc / 10, linetype = "dashed", colour = "#E84855") +
-  facet_wrap(~parameter, scales = "free_y") +
-  labs(
-    title = "SBC Rank Histograms",
-    subtitle = "Dashed line is expected count per bin under calibration",
-    x = "Scaled rank",
-    y = "Count"
+    title = "Prior-Posterior update: alpha",
+    x = "alpha",
+    y = "Density"
   ) +
   theme_cowplot()
 
-sbc_diag_tbl <- sbc_df %>%
-  group_by(parameter) %>%
-  summarise(
-    mean_rank_scaled = mean(rank_scaled),
-    sd_rank_scaled = sd(rank_scaled),
-    .groups = "drop"
-  )
+plot_tau <- ggplot() +
+  geom_density(
+    data = draws_tau_prior_df, aes(x = tau_prior),
+    fill = "grey60",
+    colour = "grey40",
+    alpha = 0.35,
+    n = 100000
+  ) +
+  geom_density(
+    data = draws_tau_post_df, aes(x = tau),
+    fill = "royalblue3",
+    colour = "black",
+    alpha = 0.40,
+    n = 100000
+  ) +
+  annotate("text", x = 12, y = Inf, label = "Prior", hjust = 0, vjust = 1.5, size = 5, colour = "grey40") +
+  annotate("text", x = 12, y = Inf, label = "Posterior", hjust = 0, vjust = 3.2, size = 5, colour = "royalblue3") +
+  geom_vline(xintercept = sim_data$tau, linetype = "dashed", colour = "#E84855", linewidth = 0.8) +
+  annotate(
+    "text",
+    x = sim_data$tau,
+    y = Inf,
+    label = paste0("True (", sim_data$tau, ")"),
+    hjust = -0.1,
+    vjust = 1.5,
+    size = 3.5,
+    colour = "#E84855"
+  ) +
+  coord_cartesian(xlim = c(0, 15), ylim = c(0, NA), expand = c(0, 0)) +
+  labs(
+    title = "Prior-Posterior update: tau",
+    x = "tau",
+    y = "Density"
+  ) +
+  theme_cowplot()
 
-print(sbc_diag_tbl)
+plot_alpha
+plot_tau
 
 # 6. FULL JOINT PARAMETER RECOVERY
 
-alpha_grid  <- c(0.1, 0.5, 0.9)
-tau_grid    <- c(0.1, 5, 10)
-
-n_reps <- 1
+alpha_grid <- c(0.1, 0.5, 0.8)
+tau_grid <- c(0.1, 5, 10)
+n_reps <- 3
 
 recovery_results <- list()
 counter <- 1
 
 for (alpha_true in alpha_grid) {
   for (tau_true in tau_grid) {
-    for (rep in 1:n_reps) {
-      
+    for (rep in seq_len(n_reps)) {
       sim <- simulate_rl_mp(
         alpha = alpha_true,
         tau = tau_true,
-        T = T,
-        rate_opponent = rate_opponent
+        n_trials = n_trials,
+        block_biases = block_biases,
+        block_size = block_size
       )
-      
-      data_list <- list(
-        T = T,
+
+      recovery_data <- list(
+        n_trials = n_trials,
         choice = sim$choice,
         opponent_choice = sim$opponent_choice,
-        alpha_prior_params = 2,
-        tau_prior_sd = 1.5
+        alpha_prior_shapes = 2,
+        tau_prior_sd = 1.5,
+        initial_prob_choice = 0.5
       )
-      
+
       fit <- model$sample(
-        data = data_list,
+        data = recovery_data,
         seed = 123,
         chains = 4,
         iter_sampling = 1000,
         iter_warmup = 1000,
         refresh = 0
       )
-      
+
       draws <- as_draws_df(fit$draws())
-      
+
       recovery_results[[counter]] <- data.frame(
         alpha_true = alpha_true,
         alpha_est = mean(draws$alpha),
@@ -346,7 +325,7 @@ for (alpha_true in alpha_grid) {
         tau_sd = sd(draws$tau),
         tau_est = mean(draws$tau)
       )
-      
+
       counter <- counter + 1
     }
   }
@@ -357,7 +336,7 @@ recovery_df <- bind_rows(recovery_results)
 # 7. RECOVERY PLOTS
 
 recovery_long <- recovery_df %>%
-  select(alpha_true, tau_true, alpha_est, tau_est) %>%
+  select(alpha_true, tau_true, alpha_est, tau_est, alpha_sd, tau_sd) %>%
   pivot_longer(
     cols = c(alpha_est, tau_est),
     names_to = "parameter",
@@ -366,14 +345,38 @@ recovery_long <- recovery_df %>%
   mutate(
     true_value = case_when(
       parameter == "alpha_est" ~ alpha_true,
-      parameter == "tau_est"   ~ tau_true
-    ))
+      parameter == "tau_est" ~ tau_true
+    ),
+    sd = case_when(
+      parameter == "alpha_est" ~ alpha_sd,
+      parameter == "tau_est" ~ tau_sd
+    )
+  )
 
-## Actual plotting 
+# 8. PRIOR SENSITIVITY ANALYSIS
 
-p1 <- ggplot(recovery_long, aes(x = true_value, y = estimate, colour = parameter)) +
+prior_sense_power_scaling_plot <- powerscale_plot_dens(fit_post, variables = c("alpha", "tau"))
+
+prior_sense_power_scaling_plot
+
+# 9. ACTUAL PLOTTING
+
+parameter_recovery_mean_estimates_plot <- ggplot(
+  recovery_long,
+  aes(x = true_value, y = estimate, colour = parameter)
+) +
+  geom_abline(
+    slope = 1,
+    intercept = 0,
+    linetype = "dashed",
+    colour = "grey30"
+  ) +
+  geom_errorbar(
+    aes(ymin = estimate - sd, ymax = estimate + sd),
+    width = 0,
+    alpha = 0.5
+  ) +
   geom_point(alpha = 0.8, size = 2) +
-  geom_abline(slope = 1, intercept = 0, linetype = "dashed", colour = "grey30") +
   ylab("Estimated Value") +
   xlab("Ground Truth Value") +
   facet_wrap(~parameter, scales = "free") +
@@ -381,38 +384,48 @@ p1 <- ggplot(recovery_long, aes(x = true_value, y = estimate, colour = parameter
   theme_cowplot() +
   labs(title = "Joint Parameter Recovery")
 
-# Posterior SDs
-p2 <- ggplot(recovery_df, aes(x = factor(alpha_true), y = alpha_sd, fill = factor(alpha_true))) +
-  geom_boxplot(alpha = 0.5, linewidth = 0.4, width = 0.5) +
-  geom_jitter(aes(colour = factor(alpha_true)), width = 0.15, alpha = 0.9, size = 1.2) +
-  labs(
-    title = "Posterior SD of Alpha",
-    x = "True Alpha",
-    y = "Posterior SD"
-  ) +
-  theme_cowplot() + 
-  theme(legend.position = "none")
+parameter_recovery_mean_estimates_plot
 
-p3 <- ggplot(recovery_df, aes(x = factor(tau_true), y = tau_sd, fill = factor(tau_true))) +
-  geom_boxplot(alpha = 0.5, linewidth = 0.4, width = 0.5) + 
-  geom_jitter(aes(colour = factor(tau_true)), width = 0.15, alpha = 0.9, size = 1.2) +
-  labs(
-    title = "Posterior SD of Tau",
-    x = "True Tau",
-    y = "Posterior SD"
+parameter_recovery_alpha_plot <- ggplot(recovery_df, aes(
+  x = factor(alpha_true),
+  y = alpha_sd,
+  fill = factor(alpha_true)
+)) +
+  geom_boxplot(
+    alpha = 0.5,
+    linewidth = 0.4,
+    width = 0.5
   ) +
+  geom_jitter(
+    aes(colour = factor(alpha_true)),
+    width = 0.15,
+    alpha = 0.9,
+    size = 1.2
+  ) +
+  labs(title = "Posterior SD of Alpha", x = "True Alpha", y = "Posterior SD") +
   theme_cowplot() +
   theme(legend.position = "none")
 
-## ud i æteren 
+parameter_recovery_alpha_plot
 
-p_prior_post
-p_prior_post_meanprob
-p_mcmc_trace
-param_diag_tbl
-sampler_diag_tbl
-p_sbc
-sbc_diag_tbl
-p1
-p2
-p3
+parameter_recovery_tau_plot <- ggplot(recovery_df, aes(
+  x = factor(tau_true),
+  y = tau_sd,
+  fill = factor(tau_true)
+)) +
+  geom_boxplot(
+    alpha = 0.5,
+    linewidth = 0.4,
+    width = 0.5
+  ) +
+  geom_jitter(
+    aes(colour = factor(tau_true)),
+    width = 0.15,
+    alpha = 0.9,
+    size = 1.2
+  ) +
+  labs(title = "Posterior SD of Tau", x = "True Tau", y = "Posterior SD") +
+  theme_cowplot() +
+  theme(legend.position = "none")
+
+parameter_recovery_tau_plot
