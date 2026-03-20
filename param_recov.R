@@ -160,6 +160,80 @@ posterior_predictive_plot <- ggplot(data.frame(mean_prob = colMeans(post_rep)), 
 
 posterior_predictive_plot
 
+
+
+## Prior-Posterior Updates 
+
+draws_alpha_prior <- as_draws_matrix(fit_post$draws("alpha_prior"))[, 1]
+draws_tau_prior   <- as_draws_matrix(fit_post$draws("tau_prior"))[, 1]
+
+draws_alpha_post  <- as_draws_matrix(fit_post$draws("alpha"))[, 1]
+draws_tau_post    <- as_draws_matrix(fit_post$draws("tau"))[, 1]
+
+draws_alpha_prior_df <- data.frame(alpha = draws_alpha_prior)
+draws_alpha_post_df  <- data.frame(alpha = draws_alpha_post)
+draws_tau_prior_df   <- data.frame(tau = draws_tau_prior)
+draws_tau_post_df    <- data.frame(tau = draws_tau_post)
+
+## Alpha
+
+plot_alpha <- ggplot() +
+  geom_density(
+    data   = draws_alpha_prior_df, aes(x = alpha_prior),
+    fill   = "grey60",
+    colour = "grey40",
+    alpha  = 0.35,
+    bounds = c(0, 1)
+  ) +
+  geom_density(
+    data   = draws_alpha_post_df, aes(x = alpha),
+    fill   = "royalblue3",
+    colour = "black",
+    alpha  = 0.40,
+    bounds = c(0, 1)
+  ) +
+  annotate("text", x = 0.5, y = Inf, label = "Prior",     hjust = 0, vjust = 1.5, size = 5, colour = "grey40") +
+  annotate("text", x = 0.5, y = Inf, label = "Posterior", hjust = 0, vjust = 3.2, size = 5, colour = "royalblue3") +
+  coord_cartesian(xlim = c(0, 1), ylim = c(0, NA), expand = c(0, 0)) +
+  labs(
+    title = "Prior–Posterior update: alpha",
+    x     = "alpha",
+    y     = "Density"
+  ) +
+  theme_cowplot()
+
+## Tau
+
+plot_tau <- ggplot() +
+  geom_density(
+    data   = draws_tau_prior_df, aes(x = tau_prior),
+    fill   = "grey60",
+    colour = "grey40",
+    alpha  = 0.35,
+    bounds = c(0, Inf)
+  ) +
+  geom_density(
+    data   = draws_tau_post_df, aes(x = tau),
+    fill   = "royalblue3",
+    colour = "black",
+    alpha  = 0.40,
+    bounds = c(0, Inf)
+  ) +
+  annotate("text", x = 0.5, y = Inf, label = "Prior",     hjust = 0, vjust = 1.5, size = 5, colour = "grey40") +
+  annotate("text", x = 0.5, y = Inf, label = "Posterior", hjust = 0, vjust = 3.2, size = 5, colour = "royalblue3") +
+  coord_cartesian(xlim = c(0, 10), ylim = c(0, NA), expand = c(0, 0)) +
+  labs(
+    title = "Prior–Posterior update: tau",
+    x     = "tau",
+    y     = "Density"
+  ) +
+  theme_cowplot()
+
+
+plot_alpha
+plot_tau
+
+
 # 5. FULL JOINT PARAMETER RECOVERY
 
 alpha_grid <- c(0.1, 0.5, 0.9)
