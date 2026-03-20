@@ -36,7 +36,9 @@ simulate_rl_mp <- function(alpha, tau, n_trials, block_biases, block_size) {
     choice = choice,
     expected_prob = expected_prob,
     opponent_choice = opponent_choice,
-    block_biases = block_biases
+    block_biases = block_biases,
+    alpha = alpha,
+    tau = tau
   )
 }
 
@@ -202,8 +204,11 @@ plot_alpha <- ggplot() +
     alpha  = 0.40,
     bounds = c(0, 1)
   ) +
-  annotate("text", x = 0.5, y = Inf, label = "Prior",     hjust = 0, vjust = 1.5, size = 5, colour = "grey40") +
-  annotate("text", x = 0.5, y = Inf, label = "Posterior", hjust = 0, vjust = 3.2, size = 5, colour = "royalblue3") +
+  annotate("text", x = 0.8, y = Inf, label = "Prior",     hjust = 0, vjust = 1.5, size = 5, colour = "grey40") +
+  annotate("text", x = 0.8, y = Inf, label = "Posterior", hjust = 0, vjust = 3.2, size = 5, colour = "royalblue3") +
+    geom_vline(xintercept = sim_data$alpha, linetype = "dashed", colour = "#E84855", linewidth = 0.8) +
+    annotate("text", x = sim_data$alpha, y = Inf, label = paste0("True (", sim_data$alpha, ")"),
+             hjust = -0.1, vjust = 1.5, size = 3.5, colour = "#E84855") +
   coord_cartesian(xlim = c(0, 1), ylim = c(0, NA), expand = c(0, 0)) +
   labs(
     title = "Prior–Posterior update: alpha",
@@ -229,8 +234,11 @@ plot_tau <- ggplot() +
     alpha  = 0.40,
     n=100000
   ) +
-  annotate("text", x = 0.5, y = Inf, label = "Prior",     hjust = 0, vjust = 1.5, size = 5, colour = "grey40") +
-  annotate("text", x = 0.5, y = Inf, label = "Posterior", hjust = 0, vjust = 3.2, size = 5, colour = "royalblue3") +
+  annotate("text", x = 12, y = Inf, label = "Prior",     hjust = 0, vjust = 1.5, size = 5, colour = "grey40") +
+  annotate("text", x = 12, y = Inf, label = "Posterior", hjust = 0, vjust = 3.2, size = 5, colour = "royalblue3") +
+  geom_vline(xintercept = sim_data$tau, linetype = "dashed", colour = "#E84855", linewidth = 0.8) +
+  annotate("text", x = sim_data$tau, y = Inf, label = paste0("True (", sim_data$tau, ")"),
+           hjust = -0.1, vjust = 1.5, size = 3.5, colour = "#E84855") +
   coord_cartesian(xlim = c(0, 15), ylim = c(0, NA), expand = c(0, 0)) +
   labs(
     title = "Prior–Posterior update: tau",
@@ -247,10 +255,9 @@ plot_tau
 
 alpha_grid <- c(0.1, 0.5, 0.9)
 tau_grid <- c(0.1, 5, 10)
-alpha_grid <- c(0.1)
-tau_grid <- c(0.1)
+alpha_grid <- c(0.1, 0.5, 0.8)
 
-n_reps <- 1
+n_reps <- 3
 
 recovery_results <- list()
 counter <- 1
@@ -399,51 +406,3 @@ parameter_recovery_tau_plot <- ggplot(recovery_df, aes(
   theme(legend.position = "none")
 
 parameter_recovery_tau_plot
-
-# Prior vs Posterior density plots
-draws_fit <- as_draws_df(fit_post$draws())
-
-alpha_true_val <- 0.6
-tau_true_val <- 5
-
-# Alpha: prior vs posterior
-alpha_prior_samples <- rbeta(4000, dummy_data$alpha_prior_shapes, dummy_data$alpha_prior_shapes)
-alpha_df <- data.frame(
-  value = c(alpha_prior_samples, draws_fit$alpha),
-  distribution = rep(c("Prior", "Posterior"), each = length(alpha_prior_samples))
-)
-
-p2 <- ggplot(alpha_df, aes(x = value, fill = distribution)) +
-  geom_density(alpha = 0.4, colour = "black") +
-  geom_vline(xintercept = alpha_true_val, linetype = "dashed", colour = "#E84855", linewidth = 0.8) +
-  annotate("text", x = alpha_true_val, y = Inf, label = paste0("True (", alpha_true_val, ")"),
-           hjust = -0.1, vjust = 1.5, size = 3.5, colour = "#E84855") +
-  scale_fill_manual(values = c("Prior" = "grey70", "Posterior" = "royalblue3")) +
-  coord_cartesian(xlim = c(0, 1)) +
-  labs(title = "Alpha: Prior vs Posterior", x = "Alpha", y = "Density", fill = NULL) +
-  theme_cowplot() +
-  theme(legend.position = "bottom")
-
-# Tau: prior vs posterior
-# Use tau_prior_sd = 1 (from the posterior fit, not recovery loop's data_list)
-tau_prior_samples <- rlnorm(4000, 0, 1)
-tau_df <- data.frame(
-  value = c(tau_prior_samples, draws_fit$tau),
-  distribution = rep(c("Prior", "Posterior"), each = length(tau_prior_samples))
-)
-
-p3 <- ggplot(tau_df, aes(x = value, fill = distribution)) +
-  geom_density(alpha = 0.4, colour = "black") +
-  geom_vline(xintercept = tau_true_val, linetype = "dashed", colour = "#E84855", linewidth = 0.8) +
-  annotate("text", x = tau_true_val, y = Inf, label = paste0("True (", tau_true_val, ")"),
-           hjust = -0.1, vjust = 1.5, size = 3.5, colour = "#E84855") +
-  scale_fill_manual(values = c("Prior" = "grey70", "Posterior" = "royalblue3")) +
-  labs(title = "Tau: Prior vs Posterior", x = "Tau", y = "Density", fill = NULL) +
-  theme_cowplot() +
-  theme(legend.position = "bottom")
-
-p2
-
-p3
-
-## ud i æteren
