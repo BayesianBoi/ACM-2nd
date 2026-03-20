@@ -120,7 +120,7 @@ data_list <- list(
   choice = sim_data$choice,
   opponent_choice = sim_data$opponent_choice,
   alpha_prior_shapes = 2,
-  tau_prior_sd = 1,
+  tau_prior_sd = 2.5,
   initial_prob_choice = 0.5
 )
 fit_post <- model$sample(
@@ -220,25 +220,24 @@ plot_tau <- ggplot() +
     fill   = "grey60",
     colour = "grey40",
     alpha  = 0.35,
-    bounds = c(0, Inf)
+    n=100000
   ) +
   geom_density(
     data   = draws_tau_post_df, aes(x = tau),
     fill   = "royalblue3",
     colour = "black",
     alpha  = 0.40,
-    bounds = c(0, Inf)
+    n=100000
   ) +
   annotate("text", x = 0.5, y = Inf, label = "Prior",     hjust = 0, vjust = 1.5, size = 5, colour = "grey40") +
   annotate("text", x = 0.5, y = Inf, label = "Posterior", hjust = 0, vjust = 3.2, size = 5, colour = "royalblue3") +
-  coord_cartesian(xlim = c(0, 10), ylim = c(0, NA), expand = c(0, 0)) +
+  coord_cartesian(xlim = c(0, 15), ylim = c(0, NA), expand = c(0, 0)) +
   labs(
     title = "Prior–Posterior update: tau",
     x     = "tau",
     y     = "Density"
   ) +
   theme_cowplot()
-
 
 plot_alpha
 plot_tau
