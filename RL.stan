@@ -48,13 +48,17 @@ generated quantities {
   array[n_trials] real<lower=0, upper=1> choice_prob_priorp;                    // prior predictive (pre-stochasticity) choice probabilities
   array[n_trials] int<lower=0, upper=1> choice_priorp;                          // prior predictive of actual choices
 
-  {                                                                             // simulating agent choices in absence of data
+  {                                                                             // simulating agent choices in absence of learning
     real prob_choice = initial_prob_choice;
 
     for (t in 1:n_trials) {
 
       choice_prob_priorp[t] = prob_choice;
       choice_priorp[t] = bernoulli_logit_rng(tau_prior * logit(prob_choice));
+
+      if (t < n_trials) {
+        prob_choice += alpha_prior * (opponent_choice[t] - prob_choice);
+      }
     }
   }
 
@@ -62,7 +66,7 @@ generated quantities {
   array[n_trials] real<lower=0, upper=1> choice_prob_postp;                     // posterior predictive (pre-stochasticity) choice probabilities at each trial
   array[n_trials] int<lower=0, upper=1> choice_postp;                           // posterior predictive actual choices made
 
-  {                                                                             // simulating agent choices after learning from the data
+  {                                                                             // simulating agent choices after learning
     real prob_choice = initial_prob_choice;
 
     for (t in 1:n_trials) {
@@ -83,7 +87,7 @@ generated quantities {
 
   // LOG-LIKELIHOOD
   array[n_trials] real log_lik;                                                 // log-likelihood of choices 
-  {                                                                             // simulating agent choices after learning from the data
+  {                                                                             // simulating agent choices after learning
     real prob_choice = initial_prob_choice;
 
     for (t in 1:n_trials) {

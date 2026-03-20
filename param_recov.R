@@ -42,30 +42,34 @@ simulate_rl_mp <- function(alpha, tau, n_trials, block_biases, block_size) {
   )
 }
 
-# 3. PRIOR PREDICTIVE CHECK
-
-dummy_data <- list(
+sim_data <- simulate_rl_mp(
+  alpha = 0.6,
+  tau = 5,
   n_trials = n_trials,
-  choice = rep(0, n_trials), # fix: before we had rep(0, T). That does not mean 0, trials. R takes T as TRUE (and thus 1), so we need to change this!
-  opponent_choice = rep(0, n_trials), # fix: same issue
+  block_biases = block_biases,
+  block_size = block_size
+)
+
+data_list <- list(
+  n_trials = n_trials,
+  choice = sim_data$choice,
+  opponent_choice = sim_data$opponent_choice,
   alpha_prior_shapes = 2,
-  tau_prior_sd = 1,
+  tau_prior_sd = 2.5,
   initial_prob_choice = 0.5
 )
 
-fit_prior <- model$sample(
-  data = dummy_data,
+model_fit <- model$sample(
+  data = data_list,
   seed = 123,
   chains = 4,
-  parallel_chains = 4,
-  iter_sampling = 500,
-  refresh = 500,
-  iter_warmup = 0,
-  fixed_param = TRUE
-  # adapt_delta = 0.75
+  iter_sampling = 1000,
+  iter_warmup = 1000
 )
 
-draws_prior <- as_draws_matrix(fit_prior$draws("choice_priorp"))
+# 3. PRIOR PREDICTIVE CHECK
+
+draws_prior <- as_draws_matrix(model_fit$draws("choice_priorp"))
 choice_cols <- grep("choice_priorp", colnames(draws_prior))
 prior_rep <- draws_prior[, choice_cols]
 
@@ -77,7 +81,7 @@ prior_rep <- draws_prior[, choice_cols]
 # rowMeans gives the overall choice rate per draw, showing the distribution of
 # agent behaviours the prior produces
 p_prior <- ggplot(data.frame(mean_prob = rowMeans(prior_rep)), aes(x = mean_prob)) +
-  geom_density(
+  geom_histogram(
     fill = "royalblue3",
     colour = "black",
     alpha = 0.4,
@@ -110,30 +114,7 @@ p_prior
 
 # 4. POSTERIOR PREDICTIVE CHECK
 
-sim_data <- simulate_rl_mp(
-  alpha = 0.6,
-  tau = 5,
-  n_trials = n_trials,
-  block_biases = block_biases,
-  block_size = block_size
-)
-data_list <- list(
-  n_trials = n_trials,
-  choice = sim_data$choice,
-  opponent_choice = sim_data$opponent_choice,
-  alpha_prior_shapes = 2,
-  tau_prior_sd = 2.5,
-  initial_prob_choice = 0.5
-)
-fit_post <- model$sample(
-  data = data_list,
-  seed = 123,
-  chains = 4,
-  iter_sampling = 1000,
-  iter_warmup = 1000
-)
-
-draws_post <- as_draws_matrix(fit_post$draws("choice_prob_postp"))
+draws_post <- as_draws_matrix(model_fit$draws("choice_prob_postp"))
 choice_cols <- grep("choice_prob_postp", colnames(draws_post))
 post_rep <- draws_post[, choice_cols]
 
@@ -176,11 +157,11 @@ p_post
 
 ## Prior-Posterior Updates 
 
-draws_alpha_prior <- as_draws_matrix(fit_post$draws("alpha_prior"))[, 1]
-draws_tau_prior   <- as_draws_matrix(fit_post$draws("tau_prior"))[, 1]
+draws_alpha_prior <- as_draws_matrix(model_fit$draws("alpha_prior"))[, 1]
+draws_tau_prior   <- as_draws_matrix(model_fit$draws("tau_prior"))[, 1]
 
-draws_alpha_post  <- as_draws_matrix(fit_post$draws("alpha"))[, 1]
-draws_tau_post    <- as_draws_matrix(fit_post$draws("tau"))[, 1]
+draws_alpha_post  <- as_draws_matrix(model_fit$draws("alpha"))[, 1]
+draws_tau_post    <- as_draws_matrix(model_fit$draws("tau"))[, 1]
 
 draws_alpha_prior_df <- data.frame(alpha = draws_alpha_prior)
 draws_alpha_post_df  <- data.frame(alpha = draws_alpha_post)
@@ -331,7 +312,7 @@ recovery_long <- recovery_df %>%
 
 # 7. PRIOR SENSITIVITY ANALYSIS
 
-prior_sense_power_scaling_plot <- powerscale_plot_dens(fit_post, variables=c("alpha", "tau"))
+prior_sense_power_scaling_plot <- powerscale_plot_dens(model_fit, variables=c("alpha", "tau"))
 
 prior_sense_power_scaling_plot
 
