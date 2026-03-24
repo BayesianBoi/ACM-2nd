@@ -80,7 +80,7 @@ prior_rep <- draws_prior[, choice_cols]
 
 # rowMeans gives the overall choice rate per draw, showing the distribution of
 # agent behaviours the prior produces
-p_prior <- ggplot(data.frame(mean_prob = rowMeans(prior_rep)), aes(x = mean_prob)) +
+p_prior <- ggplot(data.frame(mean_prob = colMeans(prior_rep)), aes(x = mean_prob)) +
   geom_histogram(
     fill = "royalblue3",
     colour = "black",
@@ -107,10 +107,44 @@ p_prior <- ggplot(data.frame(mean_prob = rowMeans(prior_rep)), aes(x = mean_prob
     ylim = c(0, NA),
     expand = c(0, 0)
   ) +
-  labs(title = "Prior Predictive Overall Choice Rate", x = "Mean Prob(choice = 1)", y = "Density") +
+  labs(title = "Prior Predictive Overall Choice Rate", x = "Prob(choice = 1)", y = "Density") +
   theme_cowplot()
 
 p_prior
+
+true_bias_per_trial <- rep(block_biases, each = block_size)
+
+# learning trajectory: agent's expected_prob vs true block biases
+prior_trajectory_df <- data.frame(
+  trial = 1:n_trials,
+  agent_mean = colMeans(prior_rep),
+  agent_lower = apply(prior_rep, 2, quantile, 0.05),
+  agent_upper = apply(prior_rep, 2, quantile, 0.95),
+  true_bias = true_bias_per_trial,
+  opponent = sim_data$opponent_choice # plotting the opponent choice also
+)
+
+p_prior_trajectory <- ggplot(prior_trajectory_df, aes(x = trial)) +
+  geom_point(aes(y = opponent, colour = "Opponent choices"), size = 1.2, alpha = 0.4) +
+  geom_step(aes(y = true_bias, colour = "True bias"), linewidth = 1, linetype = "dashed") +
+  # geom_ribbon(aes(ymin = agent_lower, ymax = agent_upper), fill = "royalblue3", alpha = 0.25) +
+  geom_line(aes(y = agent_mean, colour = "Agent belief (prior)"), linewidth = 0.8) +
+  scale_colour_manual(
+    values = c("Opponent choices" = "grey50",
+               "True bias" = "#E84855",
+               "Agent belief (prior)" = "royalblue3")
+  ) +
+  coord_cartesian(ylim = c(0, 1)) +
+  labs(
+    title = "Prior Predictive: Belief Trajectory",
+    x = "Trial",
+    y = "P(penny is in right hand)",
+    colour = NULL
+  ) +
+  theme_cowplot() +
+  theme(legend.position = "bottom")
+
+p_prior_trajectory
 
 # 4. POSTERIOR PREDICTIVE CHECK
 
@@ -118,11 +152,43 @@ draws_post <- as_draws_matrix(model_fit$draws("choice_prob_postp"))
 choice_cols <- grep("choice_prob_postp", colnames(draws_post))
 post_rep <- draws_post[, choice_cols]
 
+p_posterior <- ggplot(data.frame(mean_prob = colMeans(post_rep)), aes(x = mean_prob)) +
+  geom_histogram(
+    fill = "royalblue3",
+    colour = "black",
+    alpha = 0.4,
+    bounds = c(0, 1)
+  ) +
+  geom_vline(
+    xintercept = 0.5,
+    linetype = "dashed",
+    colour = "#E84855"
+  ) +
+  annotate(
+    "text",
+    x = 0.5,
+    y = Inf,
+    label = "Chance (0.5)",
+    hjust = -0.1,
+    vjust = 1.5,
+    size = 3.5,
+    colour = "#E84855"
+  ) +
+  coord_cartesian(
+    xlim = c(0, 1),
+    ylim = c(0, NA),
+    expand = c(0, 0)
+  ) +
+  labs(title = "Posterior Predictive Overall Choice Rate", x = "Prob(choice = 1)", y = "Density") +
+  theme_cowplot()
+
+p_posterior
+
 # build the true block bias per trial for the step function
 true_bias_per_trial <- rep(block_biases, each = block_size)
 
 # learning trajectory: agent's expected_prob vs true block biases
-trajectory_df <- data.frame(
+post_trajectory_df <- data.frame(
   trial = 1:n_trials,
   agent_mean = colMeans(post_rep),
   agent_lower = apply(post_rep, 2, quantile, 0.05),
@@ -131,10 +197,10 @@ trajectory_df <- data.frame(
   opponent = sim_data$opponent_choice # plotting the opponent choice also
 )
 
-p_post <- ggplot(trajectory_df, aes(x = trial)) +
+p_posterior_trajectory <- ggplot(post_trajectory_df, aes(x = trial)) +
   geom_point(aes(y = opponent, colour = "Opponent choices"), size = 1.2, alpha = 0.4) +
   geom_step(aes(y = true_bias, colour = "True bias"), linewidth = 1, linetype = "dashed") +
-  geom_ribbon(aes(ymin = agent_lower, ymax = agent_upper), fill = "royalblue3", alpha = 0.25) +
+  # geom_ribbon(aes(ymin = agent_lower, ymax = agent_upper), fill = "royalblue3", alpha = 0.25) +
   geom_line(aes(y = agent_mean, colour = "Agent belief (posterior)"), linewidth = 0.8) +
   scale_colour_manual(
     values = c("Opponent choices" = "grey50",
@@ -143,15 +209,15 @@ p_post <- ggplot(trajectory_df, aes(x = trial)) +
   ) +
   coord_cartesian(ylim = c(0, 1)) +
   labs(
-    title = "Posterior Predictive: Learning Trajectory",
+    title = "Posterior Predictive: Belief Trajectory",
     x = "Trial",
-    y = "P(opponent = 1)",
+    y = "P(penny is in right hand)",
     colour = NULL
   ) +
   theme_cowplot() +
   theme(legend.position = "bottom")
 
-p_post
+p_posterior_trajectory
 
 
 
