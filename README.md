@@ -7,9 +7,10 @@ The model has two parameters: **alpha** (how fast you update your belief after e
 ## What we do
 
 1. **Prior predictive check** — make sure the model can produce sensible behaviour before seeing any data
-2. **Posterior predictive check** — fit the model to simulated data and see if it tracks the opponent
-3. **Prior sensitivity analysis** — check that the posteriors are driven by the data, not the priors
-4. **Parameter recovery** — simulate from known parameters, recover them, and check how close we get
+2. **Prior-posterior update** - ensure that the model learns from the data
+3. **Posterior predictive check** — fit the model to simulated data and see if it tracks the opponent
+4. **Prior sensitivity analysis** — check that the posteriors are driven by the data, not the priors
+5. **Parameter recovery** — simulate from known parameters, recover them, and check how close we get
 
 ## Plots
 
